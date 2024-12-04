@@ -6,11 +6,6 @@
 namespace Sage
 {
 
-SharedURing IOURing::Create(uint queueSize)
-{
-    return SharedURing{ new IOURing{ queueSize } };
-}
-
 IOURing::IOURing(uint queueSize) :
     m_queueSize{ queueSize }
 {
@@ -37,11 +32,11 @@ UniqueUringCEvent IOURing::WaitForEvent()
     return UniqueUringCEvent
     {
         rawCEvent,
-        [self = shared_from_this()](io_uring_cqe* event)
+        [this](io_uring_cqe* event)
         {
             if (event != nullptr)
             {
-                io_uring_cqe_seen(&self->m_rawIOURing, event);
+                io_uring_cqe_seen(&m_rawIOURing, event);
             }
         }
     };
@@ -57,7 +52,13 @@ bool IOURing::QueueTimeoutEvent(const UserData& data, TimeNS timeout)
 
     submissionEvent->user_data = data;
     __kernel_timespec ts{ ChronoTimeToKernelTimeSpec(timeout) };
-    io_uring_prep_timeout(submissionEvent, &ts, 0, 0);
+    io_uring_prep_timeout(
+        submissionEvent,
+        &ts,
+        0,
+        // ensure timeout keeps firing without rearming
+        IORING_TIMEOUT_MULTISHOT
+    );
 
     return SubmitEvents();
 }
@@ -83,7 +84,7 @@ bool IOURing::SubmitEvents()
 
     if (success)
     {
-        LOG_TRACE("%s submitted %d events", __func__, res);
+        LOG_TRACE("%s submitted %d event(s)", __func__, res);
     }
     else
     {

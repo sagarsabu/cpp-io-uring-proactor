@@ -2,7 +2,7 @@
 .PHONY: lint
 .PHONY: clean
 
-APP_NAME=cpp-reactor
+APP_NAME=cpp-io-uring-proactor
 CMAKE=$(shell which cmake)
 CORES?=$(shell nproc)
 BUILD_DIR=$(CURDIR)/build

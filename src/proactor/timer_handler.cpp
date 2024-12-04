@@ -20,4 +20,11 @@ void TimerHandler::SetProactor(SharedProactor proactor)
     s_sharedProactor = proactor;
 }
 
+size_t TimerHandler::NextId()
+{
+    static size_t id{ 0 };
+    id = std::min(id + 1, std::numeric_limits<size_t>::max() - 1);
+    return id;
+}
+
 } // namespace Sage
