@@ -33,7 +33,7 @@ int main(int argc, char* const argv[])
         auto [logLevel, logFile] { GetCLiArgs(argc, argv) };
         Logger::SetupLogger(logLevel, logFile);
 
-        LOG_INFO("cpp-reactor starting");
+        LOG_INFO("cpp-io-uring-proactor starting");
 
         SharedProactor proactor{ Proactor::Create() };
         TimerHandler::SetProactor(proactor);
@@ -49,7 +49,7 @@ int main(int argc, char* const argv[])
         res = 1;
     }
 
-    LOG_INFO("cpp-reactor exiting code(%d)", res);
+    LOG_INFO("cpp-io-uring-proactor exiting code(%d)", res);
 
     return res;
 }
