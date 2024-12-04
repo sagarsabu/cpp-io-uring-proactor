@@ -15,7 +15,7 @@ TimerHandler::~TimerHandler()
     s_sharedProactor->RemoveTimerHandler(*this);
 }
 
-void TimerHandler::SetProactor(SharedProactor proactor)
+void TimerHandler::SetProactor(std::shared_ptr<Proactor> proactor)
 {
     s_sharedProactor = proactor;
 }

@@ -35,7 +35,7 @@ int main(int argc, char* const argv[])
 
         LOG_INFO("cpp-io-uring-proactor starting");
 
-        SharedProactor proactor{ Proactor::Create() };
+        std::shared_ptr<Proactor> proactor{ Proactor::Create() };
         TimerHandler::SetProactor(proactor);
 
         LogFileChecker logChecker{ Logger::EnsureLogFileExist };

@@ -4,7 +4,6 @@
 #include <memory>
 #include <functional>
 
-#include "proactor/aliases.hpp"
 #include "proactor/time.hpp"
 
 namespace Sage

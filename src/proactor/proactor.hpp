@@ -3,17 +3,18 @@
 #include <memory>
 #include <unordered_set>
 
-#include "proactor/aliases.hpp"
 #include "proactor/io_uring.hpp"
 #include "proactor/events.hpp"
 
 namespace Sage
 {
 
+class TimerHandler;
+
 class Proactor
 {
 public:
-    static SharedProactor Create();
+    static std::shared_ptr<Proactor> Create();
 
     void Run();
 

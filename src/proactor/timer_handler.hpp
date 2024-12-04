@@ -2,12 +2,13 @@
 
 #include <string_view>
 
-#include "proactor/aliases.hpp"
 #include "proactor/proactor.hpp"
 #include "proactor/time.hpp"
 
 namespace Sage
 {
+
+class Proactor;
 
 // All instances must be shared pointers
 class TimerHandler
@@ -17,7 +18,7 @@ public:
 
     virtual ~TimerHandler();
 
-    static void SetProactor(SharedProactor proactor);
+    static void SetProactor(std::shared_ptr<Proactor> proactor);
 
     const char* Name() const noexcept { return m_name.c_str(); }
 
@@ -39,11 +40,7 @@ private:
     TimeNS m_period;
     const size_t m_id{ NextId() };
 
-    static inline SharedProactor s_sharedProactor{ nullptr };
-    static constexpr itimerspec DISABLED_TIMER{
-        .it_interval = ChronoTimeToTimeSpec(0ns),
-        .it_value = ChronoTimeToTimeSpec(0ns)
-    };
+    static inline std::shared_ptr<Proactor> s_sharedProactor{ nullptr };
 
     friend class Proactor;
 };

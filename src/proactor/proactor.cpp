@@ -8,9 +8,9 @@
 namespace Sage
 {
 
-SharedProactor Proactor::Create()
+std::shared_ptr<Proactor> Proactor::Create()
 {
-    return SharedProactor{ new Proactor };
+    return std::shared_ptr<Proactor>{ new Proactor };
 }
 
 void Proactor::StartAllHandlers()

@@ -1,9 +1,6 @@
 #pragma once
 
-#include <memory>
 #include <limits>
-
-#include "proactor/aliases.hpp"
 
 namespace Sage
 {
