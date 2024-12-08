@@ -3,7 +3,7 @@
 #include "log/logger.hpp"
 #include "proactor/proactor.hpp"
 #include "proactor/timer_handler.hpp"
-#include "proactor/scoped_deadline.hpp"
+#include "timing/scoped_deadline.hpp"
 
 namespace Sage
 {

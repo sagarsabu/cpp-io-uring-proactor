@@ -3,7 +3,7 @@
 #include <string_view>
 
 #include "proactor/proactor.hpp"
-#include "proactor/time.hpp"
+#include "timing/time.hpp"
 
 namespace Sage
 {

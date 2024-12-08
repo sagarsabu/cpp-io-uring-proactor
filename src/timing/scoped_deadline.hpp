@@ -1,6 +1,6 @@
 #pragma once
 
-#include "proactor/time.hpp"
+#include "timing/time.hpp"
 
 namespace Sage
 {

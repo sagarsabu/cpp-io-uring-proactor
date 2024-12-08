@@ -1,6 +1,6 @@
 #include "log/logger.hpp"
-#include "proactor/time.hpp"
-#include "proactor/scoped_deadline.hpp"
+#include "timing/time.hpp"
+#include "timing/scoped_deadline.hpp"
 
 namespace Sage
 {
