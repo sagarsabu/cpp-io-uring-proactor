@@ -20,10 +20,10 @@ void TimerHandler::SetProactor(std::shared_ptr<Proactor> proactor)
     s_sharedProactor = proactor;
 }
 
-size_t TimerHandler::NextId()
+HandlerId TimerHandler::NextId() noexcept
 {
-    static size_t id{ 0 };
-    id = std::min(id + 1, std::numeric_limits<size_t>::max() - 1);
+    static HandlerId id{ 0 };
+    id = std::min(id + 1, std::numeric_limits<HandlerId>::max() - 1);
     return id;
 }
 

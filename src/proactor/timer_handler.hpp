@@ -4,6 +4,7 @@
 
 #include "proactor/proactor.hpp"
 #include "timing/time.hpp"
+#include "utils/aliases.hpp"
 
 namespace Sage
 {
@@ -33,12 +34,12 @@ private:
 
     virtual void OnTimerExpired() = 0;
 
-    static size_t NextId();
+    static HandlerId NextId() noexcept;
 
 private:
     const std::string m_name;
     TimeNS m_period;
-    const size_t m_id{ NextId() };
+    const HandlerId m_id{ NextId() };
 
     static inline std::shared_ptr<Proactor> s_sharedProactor{ nullptr };
 

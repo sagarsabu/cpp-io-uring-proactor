@@ -29,14 +29,20 @@ private:
 
     void StartAllHandlers();
 
-    void KickTimerHandler(TimerHandler& handler);
-    void CancelTimerHandler(const TimerHandler& handler);
-    void TriggerTimerHandlerExpiry(Event& event, const io_uring_cqe& cEvent);
+    void RequestContinuousTimeout(TimerHandler& handler);
+
+    void RequestTimeoutCancel(const TimerHandler& handler);
+
+    void HandleEvent(Event& event, io_uring_cqe& cEvent);
+
+    void HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEvent);
+
+    void HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_uring_cqe& cEvent);
 
     IOURing m_ioURing{ 100 };
     bool m_running{ false };
-    std::unordered_map<size_t, TimerHandler*> m_timerHandlers{};
-    std::unordered_map<size_t, std::unique_ptr<Event>> m_pendingEvents{};
+    std::unordered_map<HandlerId, TimerHandler*> m_timerHandlers{};
+    std::unordered_map<EventId, std::unique_ptr<Event>> m_pendingEvents{};
 };
 
 } // namespace Sage

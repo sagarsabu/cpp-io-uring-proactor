@@ -25,7 +25,7 @@ public:
 
     bool QueueTimeoutEvent(const UserData& data, TimeNS timeout);
 
-    bool CancelTimeoutEvent(const UserData& data);
+    bool CancelTimeoutEvent(const UserData& cancelData, const UserData& timeoutData);
 
 private:
     IOURing(const IOURing&) = delete;

@@ -63,7 +63,7 @@ bool IOURing::QueueTimeoutEvent(const UserData& data, TimeNS timeout)
     return SubmitEvents();
 }
 
-bool IOURing::CancelTimeoutEvent(const UserData& data)
+bool IOURing::CancelTimeoutEvent(const UserData& cancelData, const UserData& timeoutData)
 {
     io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
     if (submissionEvent == nullptr)
@@ -71,8 +71,8 @@ bool IOURing::CancelTimeoutEvent(const UserData& data)
         return false;
     }
 
-    submissionEvent->user_data = data;
-    io_uring_prep_timeout_remove(submissionEvent, data, 0);
+    submissionEvent->user_data = cancelData;
+    io_uring_prep_timeout_remove(submissionEvent, timeoutData, 0);
 
     return SubmitEvents();
 }
