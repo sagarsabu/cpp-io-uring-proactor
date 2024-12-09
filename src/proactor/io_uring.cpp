@@ -25,7 +25,11 @@ UniqueUringCEvent IOURing::WaitForEvent()
     if (int res = io_uring_wait_cqe(&m_rawIOURing, &rawCEvent);
         res < 0)
     {
-        LOG_ERROR("%s failed to waiting for event completion. %s", __func__, strerror(-res));
+        // Ignore interrupts. i.e debugger pause / suspend
+        if (res != -EINTR)
+        {
+            LOG_ERROR("%s failed to waiting for event completion. %s", __func__, strerror(-res));
+        }
         return nullptr;
     }
 
