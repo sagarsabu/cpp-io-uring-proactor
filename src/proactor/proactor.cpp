@@ -1,4 +1,6 @@
 #include <cstring>
+#include <csignal>
+#include <sys/signalfd.h>
 
 #include "log/logger.hpp"
 #include "proactor/proactor.hpp"
@@ -23,11 +25,12 @@ void Proactor::StartAllHandlers()
 
 void Proactor::Run()
 {
+    AttachExitHandlers();
     StartAllHandlers();
 
     m_running = true;
 
-    while (true)
+    while (m_running)
     {
         UniqueUringCEvent cEvent{ m_ioURing.WaitForEvent() };
         if (cEvent == nullptr)
@@ -55,8 +58,6 @@ void Proactor::Run()
             m_pendingEvents.erase(itr);
         }
     }
-
-    m_running = false;
 }
 
 void Proactor::AddTimerHandler(TimerHandler& handler)
@@ -116,6 +117,74 @@ void Proactor::RemoveTimerHandler(TimerHandler& handler)
     RequestTimeoutCancel(handler);
 }
 
+void Proactor::AttachExitHandlers()
+{
+    constexpr std::array exitSignals{ SIGINT, SIGQUIT, SIGTERM };
+    auto handler = [this](const signalfd_siginfo& info)
+    {
+        switch (info.ssi_signo)
+        {
+            case SIGINT:
+            case SIGQUIT:
+            case SIGTERM:
+            {
+                LOG_INFO("SignalHandler received shutdown signal %s(%d)",
+                    strsignal(info.ssi_signo), info.ssi_signo);
+                m_running = false;
+                break;
+            }
+
+            default:
+            {
+                LOG_CRITICAL("SignalHandler received unexpected signal %s(%d). aborting!",
+                    strsignal(info.ssi_signo), info.ssi_signo);
+                std::abort();
+            }
+        }
+    };
+
+    for (auto sig : exitSignals)
+    {
+        AddSignalHandler(sig, handler);
+    }
+}
+
+void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
+{
+    if (auto itr{ m_signalHandlers.find(sig) }; itr != m_signalHandlers.end())
+    {
+        LOG_ERROR("%s signal %s(%d) already attached", __func__, strsignal(sig), sig);
+        throw std::runtime_error{ "Signal Already Attached" };
+    }
+
+    sigset_t sigToAdd{};
+    sigemptyset(&sigToAdd);
+    sigaddset(&sigToAdd, sig);
+
+    if (sigprocmask(SIG_BLOCK, &sigToAdd, nullptr) == -1)
+    {
+        int err{ errno };
+        LOG_ERROR("%s signal %s(%d) could not be blocked. %s", __func__, strsignal(sig), sig, strerror(err));
+        throw std::runtime_error{ "Signal Could Not Be Blocked" };
+    }
+
+    int fd{ signalfd(-1, &sigToAdd, 0) };
+    if (fd == -1)
+    {
+        int err{ errno };
+        LOG_ERROR("%s signal fd creation failed %s(%d). %s", __func__, strsignal(sig), sig, strerror(err));
+        throw std::runtime_error{ "SignalFd Failed" };
+    }
+
+    m_signalHandlers[sig] = std::make_unique<SignalHandleData>(fd, sig, func);
+    // m_signalHandlers.emplace(sig, SignalHandleData{ .m_fd = fd, .m_signal = sig, .m_callback = func });
+
+    if (not RequestSignalRead(sig, fd))
+    {
+        throw std::runtime_error{ "RequestSignalRead Failed" };
+    }
+}
+
 void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
 {
     for (auto& pending : m_pendingEvents)
@@ -134,8 +203,8 @@ void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
 
         std::unique_ptr<TimeoutCancelEvent> cancelEvent{ std::make_unique<TimeoutCancelEvent>(handler.m_id) };
         // the timeout user data must be the same as the inital timeout used data
-        auto currentTimerUserData{ static_cast<IOURing::UserData>(timerExpireEvent.m_id) };
-        auto userData{ cancelEvent->m_id };
+        IOURing::UserData currentTimerUserData{ timerExpireEvent.m_id };
+        IOURing::UserData userData{ cancelEvent->m_id };
         if (not m_ioURing.CancelTimeoutEvent(userData, currentTimerUserData))
         {
             LOG_ERROR("%s [%s] cancel failed", __func__, handler.Name());
@@ -145,11 +214,27 @@ void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
         m_pendingEvents[userData] = std::move(cancelEvent);
         LOG_DEBUG("%s [%s] handler cancel triggered eventId(%ld)",
             __func__, handler.Name(), timerExpireEvent.m_id);
-
     }
 }
 
-void Proactor::HandleEvent(Event& event, io_uring_cqe& cEvent)
+bool Proactor::RequestSignalRead(int signal, int signalFd)
+{
+    auto event{ std::make_unique<SignalEvent>(signal, signalFd) };
+
+    IOURing::UserData userData{ event->m_id };
+    if (not m_ioURing.QueueSignalRead(userData, event->m_signalFd, event->m_signalReadBuff))
+    {
+        LOG_ERROR("%s signal queue read failed for %s(%d)", __func__, strsignal(signal), signal);
+        return false;
+    }
+
+    LOG_DEBUG("%s signal %s(%d) read queued", __func__, strsignal(signal), signal);
+    m_pendingEvents[userData] = std::move(event);
+
+    return true;
+}
+
+void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
 {
     switch (event.Type())
     {
@@ -159,6 +244,10 @@ void Proactor::HandleEvent(Event& event, io_uring_cqe& cEvent)
 
         case EventType::TimeoutCancel:
             HandleTimeoutCancelEvent(static_cast<TimeoutCancelEvent&>(event), cEvent);
+            break;
+
+        case EventType::Signal:
+            HandleSignalEvent(static_cast<SignalEvent&>(event), cEvent);
             break;
 
         default:
@@ -246,6 +335,45 @@ void Proactor::HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_urin
                 __func__, event.m_id, eventRes, strerror(-eventRes));
             break;
         }
+    }
+}
+
+void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
+{
+    int res{ cEvent.res };
+    if (res < 0)
+    {
+        LOG_ERROR("%s read failed for signal %s(%d). %s",
+            __func__, strsignal(event.m_signal), event.m_signal, strerror(-res));
+        return;
+    }
+
+    if (res != sizeof(signalfd_siginfo))
+    {
+        LOG_ERROR("%s read failed for signal %s(%d). expected-read-size(%ld) actual-read-size(%d)",
+            __func__, strsignal(event.m_signal), event.m_signal, sizeof(signalfd_siginfo), res);
+        return;
+    }
+
+    auto itr{ m_signalHandlers.find(event.m_signal) };
+    if (itr == m_signalHandlers.end())
+    {
+        LOG_ERROR("%s could not find signal %s(%d) in handler map",
+            __func__, strsignal(event.m_signal), event.m_signal);
+        return;
+    }
+
+    const auto& [sig, data] { *itr };
+
+    LOG_INFO("%s invoking signal handler for signal %s(%d)",
+        __func__, strsignal(sig), sig);
+
+    (data->m_callback)(event.m_signalReadBuff);
+
+    if (not RequestSignalRead(data->m_signal, data->m_fd))
+    {
+        LOG_CRITICAL("%s failed to request signal %s(%d) read",
+            __func__, strsignal(event.m_signal), event.m_signal);
     }
 }
 

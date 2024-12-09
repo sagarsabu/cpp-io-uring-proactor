@@ -1,8 +1,9 @@
 #pragma once
 
-#include <liburing.h>
 #include <memory>
 #include <functional>
+#include <liburing.h>
+#include <sys/signalfd.h>
 
 #include "timing/time.hpp"
 
@@ -26,6 +27,8 @@ public:
     bool QueueTimeoutEvent(const UserData& data, TimeNS timeout);
 
     bool CancelTimeoutEvent(const UserData& cancelData, const UserData& timeoutData);
+
+    bool QueueSignalRead(const UserData& data, int fd, signalfd_siginfo& readBuff);
 
 private:
     IOURing(const IOURing&) = delete;

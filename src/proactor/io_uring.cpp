@@ -77,6 +77,20 @@ bool IOURing::CancelTimeoutEvent(const UserData& cancelData, const UserData& tim
     return SubmitEvents();
 }
 
+bool IOURing::QueueSignalRead(const UserData& data, int fd, signalfd_siginfo& readBuff)
+{
+    io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    if (submissionEvent == nullptr)
+    {
+        return false;
+    }
+
+    submissionEvent->user_data = data;
+    io_uring_prep_read(submissionEvent, fd, &readBuff, sizeof(signalfd_siginfo), 0);
+
+    return SubmitEvents();
+}
+
 bool IOURing::SubmitEvents()
 {
     int res{ io_uring_submit(&m_rawIOURing) };

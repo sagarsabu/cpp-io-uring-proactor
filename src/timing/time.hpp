@@ -19,6 +19,7 @@ using TimeS = std::chrono::seconds;
 
 // Helpers
 
+// cppcheck-suppress unusedFunction
 constexpr timespec ChronoTimeToTimeSpec(const TimeNS& duration) noexcept
 {
     const TimeS seconds{ std::chrono::duration_cast<TimeS>(duration) };
