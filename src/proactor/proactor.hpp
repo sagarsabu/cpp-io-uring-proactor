@@ -20,6 +20,12 @@ public:
 public:
     static std::shared_ptr<Proactor> Create();
 
+    static void Destroy();
+
+    static std::shared_ptr<Proactor> Instance() { return s_instance; }
+
+    ~Proactor();
+
     void Run();
 
     void AddTimerHandler(TimerHandler& handler);
@@ -30,7 +36,7 @@ public:
 
 private:
     // creation via factory
-    Proactor() = default;
+    Proactor();
 
     void StartAllHandlers();
 
@@ -51,6 +57,9 @@ private:
     void HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_uring_cqe& cEvent);
 
     void HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
+
+private:
+    static inline std::shared_ptr<Proactor> s_instance{ nullptr };
 
     IOURing m_ioURing{ 10'000 };
     bool m_running{ false };

@@ -12,7 +12,23 @@ namespace Sage
 
 std::shared_ptr<Proactor> Proactor::Create()
 {
-    return std::shared_ptr<Proactor>{ new Proactor };
+    s_instance = std::shared_ptr<Proactor>{ new Proactor };
+    return s_instance;
+}
+
+void Proactor::Destroy()
+{
+    s_instance = nullptr;
+}
+
+Proactor::Proactor()
+{
+    LOG_INFO("proactor created");
+}
+
+Proactor::~Proactor()
+{
+    LOG_INFO("proactor deleted");
 }
 
 void Proactor::StartAllHandlers()

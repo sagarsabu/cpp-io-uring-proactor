@@ -19,8 +19,6 @@ public:
 
     virtual ~TimerHandler();
 
-    static void SetProactor(std::shared_ptr<Proactor> proactor);
-
     const char* Name() const noexcept { return m_name.c_str(); }
 
     const std::string& NameStr() const noexcept { return m_name; }
@@ -40,8 +38,6 @@ private:
     const std::string m_name;
     TimeNS m_period;
     const HandlerId m_id{ NextId() };
-
-    static inline std::shared_ptr<Proactor> s_sharedProactor{ nullptr };
 
     friend class Proactor;
 };

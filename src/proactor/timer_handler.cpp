@@ -7,17 +7,12 @@ TimerHandler::TimerHandler(std::string_view name, const TimeNS& period) :
     m_name{ name },
     m_period{ period }
 {
-    s_sharedProactor->AddTimerHandler(*this);
+    Proactor::Instance()->AddTimerHandler(*this);
 }
 
 TimerHandler::~TimerHandler()
 {
-    s_sharedProactor->RemoveTimerHandler(*this);
-}
-
-void TimerHandler::SetProactor(std::shared_ptr<Proactor> proactor)
-{
-    s_sharedProactor = proactor;
+    Proactor::Instance()->RemoveTimerHandler(*this);
 }
 
 HandlerId TimerHandler::NextId() noexcept

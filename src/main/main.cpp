@@ -35,13 +35,17 @@ int main(int argc, char* const argv[])
 
         LOG_INFO("cpp-io-uring-proactor starting");
 
-        std::shared_ptr<Proactor> proactor{ Proactor::Create() };
-        TimerHandler::SetProactor(proactor);
+        {
+            std::shared_ptr<Proactor> proactor{ Proactor::Create() };
 
-        LogFileChecker logChecker{ Logger::EnsureLogFileExist };
-        TestTimerHandler handler;
+            {
+                LogFileChecker logChecker{ Logger::EnsureLogFileExist };
+                TestTimerHandler handler;
+                proactor->Run();
+            }
 
-        proactor->Run();
+            Proactor::Destroy();
+        }
     }
     catch (const std::exception& e)
     {
