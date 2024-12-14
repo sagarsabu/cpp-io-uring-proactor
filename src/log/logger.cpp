@@ -193,20 +193,12 @@ struct LogTimestamp
 {
     // e.g "01 - 09 - 2023 00:42 : 19"
     using SecondsBuffer = char[26];
-    // :%03u requires 7 bytes max
-    using MilliSecBuffer = char[7];
+    // :%09lu requires 22 bytes max
+    using NanoSecBuffer = char[22];
 
     LogTimestamp() noexcept
     {
         std::timespec_get(&m_timeSpec, TIME_UTC);
-
-        uint16_t millisec = static_cast<uint16_t>(m_timeSpec.tv_nsec / 1'000'000U);
-        // incase of overflow
-        if (millisec >= 1000U)
-        {
-            millisec = static_cast<uint16_t>(millisec - 1000U);
-            m_timeSpec.tv_sec++;
-        }
 
         std::tm localTimeRes{};
         std::strftime(
@@ -215,16 +207,16 @@ struct LogTimestamp
             "%d-%m-%Y %H:%M:%S",
             ::localtime_r(&m_timeSpec.tv_sec, &localTimeRes)
         );
-        snprintf(m_msSecBuff, sizeof(m_msSecBuff), ":%03u", millisec);
+        snprintf(m_timeExtraBuff, sizeof(m_timeExtraBuff), ":%09lu", m_timeSpec.tv_nsec);
     }
 
     const SecondsBuffer& getSecondsBuffer() const noexcept { return m_secondsBuffer; };
 
-    const MilliSecBuffer& getMilliSecBuffer() const noexcept { return m_msSecBuff; };
+    const NanoSecBuffer& getSecondsExtraBuffer() const noexcept { return m_timeExtraBuff; };
 
 private:
     SecondsBuffer m_secondsBuffer;
-    MilliSecBuffer m_msSecBuff;
+    NanoSecBuffer m_timeExtraBuff;
     timespec m_timeSpec;
 };
 
@@ -282,7 +274,7 @@ void LogToStream(Level level, const char* fmt, va_list args)
         LogStreamer::Stream& stream{ g_logStreamer->m_streamRef.get() };
         stream
             << GetLevelFormatter(level)
-            << '[' << ts.getSecondsBuffer() << ts.getMilliSecBuffer() << "] "
+            << '[' << ts.getSecondsBuffer() << ts.getSecondsExtraBuffer() << "] "
             << '[' << GetLevelName(level) << "] "
             << msgBuff
             << FORMAT_END << '\n';

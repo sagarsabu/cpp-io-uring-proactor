@@ -9,7 +9,12 @@ namespace Sage
 IOURing::IOURing(uint queueSize) :
     m_queueSize{ queueSize }
 {
-    io_uring_queue_init(m_queueSize, &m_rawIOURing, 0);
+    io_uring_queue_init(
+        m_queueSize,
+        &m_rawIOURing,
+        // Single threaded, so single issuer optimization
+        IORING_SETUP_SINGLE_ISSUER
+    );
 }
 
 IOURing::~IOURing()
@@ -33,8 +38,7 @@ UniqueUringCEvent IOURing::WaitForEvent()
         return nullptr;
     }
 
-    return UniqueUringCEvent
-    {
+    return UniqueUringCEvent{
         rawCEvent,
         [this](io_uring_cqe* event)
         {
