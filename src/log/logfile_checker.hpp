@@ -3,6 +3,7 @@
 #include <functional>
 
 #include "proactor/timer_handler.hpp"
+#include "log/logger.hpp"
 
 namespace Sage
 {
@@ -19,7 +20,7 @@ public:
 
     void OnTimerExpired() override
     {
-        LOG_DEBUG("[%s] invoking log file check callback", Name());
+        LOG_DEBUG("[{}] invoking log file check callback", Name());
         m_checkCb();
     }
 

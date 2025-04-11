@@ -1,8 +1,8 @@
-#include "log/logger.hpp"
 #include "log/logfile_checker.hpp"
+#include "log/logger.hpp"
+#include "main/cli_args.hpp"
 #include "proactor/proactor.hpp"
 #include "proactor/timer_handler.hpp"
-#include "main/cli_args.hpp"
 
 namespace Sage
 {
@@ -10,14 +10,9 @@ namespace Sage
 class TestTimerHandler final : public TimerHandler
 {
 public:
-    TestTimerHandler() :
-        TimerHandler{ "testHandler", 1s }
-    { }
+    TestTimerHandler() : TimerHandler{ "testHandler", 1s } {}
 
-    void OnTimerExpired() override
-    {
-        LOG_INFO("[%s] timer expired", Name());
-    }
+    void OnTimerExpired() override { LOG_INFO("[{}] timer expired", Name()); }
 };
 
 } // namespace Sage
@@ -30,8 +25,8 @@ int main(int argc, char* const argv[])
 
     try
     {
-        auto [logLevel, logFile] { GetCLiArgs(argc, argv) };
-        Logger::SetupLogger(logLevel, logFile);
+        auto [logLevel, logFile]{ GetCLiArgs(argc, argv) };
+        Logger::SetupLogger(logFile, logLevel);
 
         LOG_INFO("cpp-io-uring-proactor starting");
 
@@ -49,11 +44,11 @@ int main(int argc, char* const argv[])
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("caught std exception. %s", e.what());
+        LOG_ERROR("caught std exception. {}", e.what());
         res = 1;
     }
 
-    LOG_INFO("cpp-io-uring-proactor exiting code(%d)", res);
+    LOG_INFO("cpp-io-uring-proactor exiting code({})", res);
 
     return res;
 }

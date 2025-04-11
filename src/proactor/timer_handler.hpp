@@ -19,7 +19,7 @@ public:
 
     virtual ~TimerHandler();
 
-    const char* Name() const noexcept { return m_name.c_str(); }
+    std::string_view Name() const noexcept { return m_name; }
 
     const std::string& NameStr() const noexcept { return m_name; }
 

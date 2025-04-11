@@ -1,11 +1,10 @@
 #pragma once
 
-#include <memory>
-#include <unordered_set>
 #include <functional>
+#include <memory>
 
-#include "proactor/io_uring.hpp"
 #include "proactor/events.hpp"
+#include "proactor/io_uring.hpp"
 
 namespace Sage
 {

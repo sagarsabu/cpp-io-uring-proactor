@@ -1,11 +1,11 @@
 #pragma once
 
-#include <cstdint>
+#include <cstddef>
 
 namespace Sage
 {
 
-using EventId = std::size_t;
-using HandlerId = std::size_t;
+using EventId = size_t;
+using HandlerId = size_t;
 
 } // namespace Sage

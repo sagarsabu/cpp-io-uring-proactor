@@ -24,7 +24,7 @@ IOURing::~IOURing()
 
 UniqueUringCEvent IOURing::WaitForEvent()
 {
-    LOG_TRACE("%s Waiting for events to populate", __func__);
+    LOG_TRACE("{} Waiting for events to populate", __func__);
 
     io_uring_cqe* rawCEvent{ nullptr };
     if (int res = io_uring_wait_cqe(&m_rawIOURing, &rawCEvent);
@@ -33,7 +33,7 @@ UniqueUringCEvent IOURing::WaitForEvent()
         // Ignore interrupts. i.e debugger pause / suspend
         if (res != -EINTR)
         {
-            LOG_ERROR("%s failed to waiting for event completion. %s", __func__, strerror(-res));
+            LOG_ERROR("{} failed to waiting for event completion. {}", __func__, strerror(-res));
         }
         return nullptr;
     }
@@ -106,11 +106,11 @@ bool IOURing::SubmitEvents()
 
     if (success)
     {
-        LOG_TRACE("%s submitted %d event(s)", __func__, res);
+        LOG_TRACE("{} submitted {} event(s)", __func__, res);
     }
     else
     {
-        LOG_ERROR("%s failed. %s", __func__, strerror(-res));
+        LOG_ERROR("{} failed. {}", __func__, strerror(-res));
     }
 
     return success;
@@ -121,7 +121,7 @@ io_uring_sqe* IOURing::GetSubmissionEvent()
     io_uring_sqe* submissionEvent{ io_uring_get_sqe(&m_rawIOURing) };
     if (submissionEvent == nullptr)
     {
-        LOG_ERROR("%s failed. submission queue may be full?", __func__);
+        LOG_ERROR("{} failed. submission queue may be full?", __func__);
     }
 
     return submissionEvent;

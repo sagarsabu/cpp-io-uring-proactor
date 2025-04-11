@@ -14,6 +14,7 @@ CPPCHECK_PARAMS=\
 	--language=c++ --std=c++20 \
 	--library=posix \
 	--inconclusive --force --inline-suppr \
+	--check-level=exhaustive \
 	--enable=all \
 	--suppress=funcArgNamesDifferent \
 	--suppress=missingIncludeSystem \
