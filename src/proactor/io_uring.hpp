@@ -1,13 +1,11 @@
 #pragma once
 
-#include <memory>
 #include <functional>
+#include <memory>
 #include <sys/signalfd.h>
 
+#include "proactor/sys_liburing.hpp" // IWYU pragma: keep
 #include "timing/time.hpp"
-
-#pragma GCC system_header
-#include <liburing.h>
 
 namespace Sage
 {
@@ -42,7 +40,7 @@ private:
 
     bool SubmitEvents();
 
-    struct io_uring m_rawIOURing { };
+    struct io_uring m_rawIOURing{};
     const uint m_queueSize;
 };
 
