@@ -2,10 +2,12 @@
 
 #include <memory>
 #include <functional>
-#include <liburing.h>
 #include <sys/signalfd.h>
 
 #include "timing/time.hpp"
+
+#pragma GCC system_header
+#include <liburing.h>
 
 namespace Sage
 {
