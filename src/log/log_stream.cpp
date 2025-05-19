@@ -96,14 +96,12 @@ void LogStreamer::EnsureLogFileWriteable()
 
 void LogStreamer::SetStreamToConsole()
 {
-    std::lock_guard lk{ m_mutex };
     m_logFileStream = {};
     m_streamRef = s_consoleStream;
 }
 
 void LogStreamer::SetStreamToFile(std::ofstream fileStream)
 {
-    std::lock_guard lk{ m_mutex };
     m_logFileStream = std::move(fileStream);
     m_streamRef = m_logFileStream;
 }

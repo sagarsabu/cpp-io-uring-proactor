@@ -1,23 +1,23 @@
 #pragma once
 
-#include <getopt.h>
-#include <string>
-#include <iostream>
 #include <array>
+#include <getopt.h>
+#include <iostream>
+#include <print>
+#include <string>
 
-#include "log/logger.hpp"
+#include "log/log_levels.hpp"
 
 namespace Sage
 {
 
 auto GetCLiArgs(int argc, char* const argv[])
 {
-    constexpr std::array argOptions
-    {
-        option{ "help", no_argument, nullptr, 'h' },
+    constexpr std::array argOptions{
+        option{ "help",  no_argument,       nullptr, 'h' },
         option{ "level", required_argument, nullptr, 'l' },
-        option{ "file", required_argument, nullptr, 'f' },
-        option{ 0, 0, 0, 0 }
+        option{ "file",  required_argument, nullptr, 'f' },
+        option{ 0,       0,                 0,       0   }
     };
 
     auto usage = [&argv]
@@ -28,13 +28,13 @@ auto GetCLiArgs(int argc, char* const argv[])
             progName = progName.substr(pos + 1);
         }
 
-        std::printf(
+        std::println(
+            std::cerr,
             "Usage: %s"
             "\n\t[optional] --level|-l <t|trace|d|debug|i|info|w|warn|e|error|c|critical>"
             "\n\t[optional] --file|-f <filename> "
-            "\n\t[optional] --help|-h"
-            "\n",
-            progName.data()
+            "\n\t[optional] --help|-h",
+            progName
         );
     };
 

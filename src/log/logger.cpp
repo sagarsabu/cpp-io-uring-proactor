@@ -94,24 +94,6 @@ std::string_view GetLevelName(Level level) noexcept { return LEVEL_NAMES[level];
 
 std::string_view GetFormatEnd() noexcept { return FORMAT_END; }
 
-std::string_view CurrentThreadName() noexcept
-{
-    // Max allowed buffer for POSIX thread name
-    using ThreadNameBuffer = char[16];
-
-    static thread_local std::string threadName{};
-    if (threadName.empty())
-    {
-        ThreadNameBuffer buff{};
-        pthread_getname_np(pthread_self(), buff, sizeof(buff));
-
-        // centered thread name output
-        threadName = std::format("{:^17s}", buff);
-    }
-
-    return threadName;
-}
-
 } // namespace Internal
 
 } // namespace Logger

@@ -6,8 +6,7 @@
 namespace Sage
 {
 
-IOURing::IOURing(uint queueSize) :
-    m_queueSize{ queueSize }
+IOURing::IOURing(uint queueSize) : m_queueSize{ queueSize }
 {
     io_uring_queue_init(
         m_queueSize,
@@ -17,37 +16,31 @@ IOURing::IOURing(uint queueSize) :
     );
 }
 
-IOURing::~IOURing()
-{
-    io_uring_queue_exit(&m_rawIOURing);
-}
+IOURing::~IOURing() { io_uring_queue_exit(&m_rawIOURing); }
 
 UniqueUringCEvent IOURing::WaitForEvent()
 {
-    LOG_TRACE("{} Waiting for events to populate", __func__);
+    LOG_TRACE("Waiting for events to populate");
 
     io_uring_cqe* rawCEvent{ nullptr };
-    if (int res = io_uring_wait_cqe(&m_rawIOURing, &rawCEvent);
-        res < 0)
+    if (int res = io_uring_wait_cqe(&m_rawIOURing, &rawCEvent); res < 0)
     {
         // Ignore interrupts. i.e debugger pause / suspend
         if (res != -EINTR)
         {
-            LOG_ERROR("{} failed to waiting for event completion. {}", __func__, strerror(-res));
+            LOG_ERROR("failed to waiting for event completion. {}", strerror(-res));
         }
         return nullptr;
     }
 
-    return UniqueUringCEvent{
-        rawCEvent,
-        [this](io_uring_cqe* event)
-        {
-            if (event != nullptr)
-            {
-                io_uring_cqe_seen(&m_rawIOURing, event);
-            }
-        }
-    };
+    return UniqueUringCEvent{ rawCEvent,
+                              [this](io_uring_cqe* event)
+                              {
+                                  if (event != nullptr)
+                                  {
+                                      io_uring_cqe_seen(&m_rawIOURing, event);
+                                  }
+                              } };
 }
 
 bool IOURing::QueueTimeoutEvent(const UserData& data, TimeNS timeout)
@@ -106,11 +99,11 @@ bool IOURing::SubmitEvents()
 
     if (success)
     {
-        LOG_TRACE("{} submitted {} event(s)", __func__, res);
+        LOG_TRACE("submitted {} event(s)", res);
     }
     else
     {
-        LOG_ERROR("{} failed. {}", __func__, strerror(-res));
+        LOG_ERROR("failed. {}", strerror(-res));
     }
 
     return success;
@@ -121,7 +114,7 @@ io_uring_sqe* IOURing::GetSubmissionEvent()
     io_uring_sqe* submissionEvent{ io_uring_get_sqe(&m_rawIOURing) };
     if (submissionEvent == nullptr)
     {
-        LOG_ERROR("{} failed. submission queue may be full?", __func__);
+        LOG_ERROR("failed. submission queue may be full?");
     }
 
     return submissionEvent;

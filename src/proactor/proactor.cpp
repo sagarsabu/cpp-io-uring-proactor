@@ -49,12 +49,12 @@ void Proactor::Run()
         auto itr{ m_pendingEvents.find(userData) };
         if (itr == m_pendingEvents.end())
         {
-            LOG_ERROR("{} failed to find event for user-data={}", __func__, userData);
+            LOG_ERROR("failed to find event for user-data={}", userData);
             continue;
         }
 
         auto& event{ itr->second };
-        LOG_DEBUG("{} got event={}", __func__, event->NameAndType());
+        LOG_DEBUG("got event={}", event->NameAndType());
 
         HandleEvent(*event, *cEvent);
 
@@ -70,7 +70,7 @@ void Proactor::AddTimerHandler(TimerHandler& handler)
 {
     if (m_timerHandlers.contains(handler.m_id))
     {
-        LOG_ERROR("{} [{}] handler already in collection", __func__, handler.Name());
+        LOG_ERROR("[{}] handler already in collection", handler.Name());
         return;
     }
 
@@ -86,7 +86,7 @@ void Proactor::StartTimerHandler(TimerHandler& handler)
 {
     if (not m_timerHandlers.contains(handler.m_id))
     {
-        LOG_CRITICAL("{} [{}] handler not in collection", __func__, handler.Name());
+        LOG_CRITICAL("[{}] handler not in collection", handler.Name());
         return;
     }
 
@@ -101,12 +101,12 @@ void Proactor::RequestContinuousTimeout(TimerHandler& handler)
     if (auto data{ static_cast<IOURing::UserData>(event->m_id) };
         not m_ioURing.QueueTimeoutEvent(data, handler.m_period))
     {
-        LOG_ERROR("{} [{}] kick failed", __func__, handler.Name());
+        LOG_ERROR("[{}] kick failed", handler.Name());
         return;
     }
 
     m_pendingEvents[eventId] = std::move(event);
-    LOG_DEBUG("{} [{}] handler kicked eventId({})", __func__, handler.Name(), eventId);
+    LOG_DEBUG("[{}] handler kicked eventId({})", handler.Name(), eventId);
 }
 
 void Proactor::RemoveTimerHandler(TimerHandler& handler)
@@ -114,11 +114,11 @@ void Proactor::RemoveTimerHandler(TimerHandler& handler)
     auto itr = m_timerHandlers.find(handler.m_id);
     if (itr == m_timerHandlers.end())
     {
-        LOG_ERROR("{} [{}] handler not in collection", __func__, handler.Name());
+        LOG_ERROR("[{}] handler not in collection", handler.Name());
         return;
     }
 
-    LOG_INFO("{} [{}] handler removed", __func__, handler.Name());
+    LOG_INFO("[{}] handler removed", handler.Name());
 
     RequestTimeoutCancel(handler);
 }
@@ -158,7 +158,7 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
 {
     if (auto itr{ m_signalHandlers.find(sig) }; itr != m_signalHandlers.end())
     {
-        LOG_ERROR("{} signal {}({}) already attached", __func__, strsignal(sig), sig);
+        LOG_ERROR("signal {}({}) already attached", strsignal(sig), sig);
         throw std::runtime_error{ "Signal Already Attached" };
     }
 
@@ -169,7 +169,7 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
     if (sigprocmask(SIG_BLOCK, &sigToAdd, nullptr) == -1)
     {
         int err{ errno };
-        LOG_ERROR("{} signal {}({}) could not be blocked. {}", __func__, strsignal(sig), sig, strerror(err));
+        LOG_ERROR("signal {}({}) could not be blocked. {}", strsignal(sig), sig, strerror(err));
         throw std::runtime_error{ "Signal Could Not Be Blocked" };
     }
 
@@ -177,7 +177,7 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
     if (fd == -1)
     {
         int err{ errno };
-        LOG_ERROR("{} signal fd creation failed {}({}). {}", __func__, strsignal(sig), sig, strerror(err));
+        LOG_ERROR("signal fd creation failed {}({}). {}", strsignal(sig), sig, strerror(err));
         throw std::runtime_error{ "SignalFd Failed" };
     }
 
@@ -212,12 +212,12 @@ void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
         IOURing::UserData userData{ cancelEvent->m_id };
         if (not m_ioURing.CancelTimeoutEvent(userData, currentTimerUserData))
         {
-            LOG_ERROR("{} [{}] cancel failed", __func__, handler.Name());
+            LOG_ERROR("[{}] cancel failed", handler.Name());
             continue;
         }
 
         m_pendingEvents[userData] = std::move(cancelEvent);
-        LOG_DEBUG("{} [{}] handler cancel triggered eventId({})", __func__, handler.Name(), timerExpireEvent.m_id);
+        LOG_DEBUG("[{}] handler cancel triggered eventId({})", handler.Name(), timerExpireEvent.m_id);
     }
 }
 
@@ -228,11 +228,11 @@ bool Proactor::RequestSignalRead(int signal, int signalFd)
     IOURing::UserData userData{ event->m_id };
     if (not m_ioURing.QueueSignalRead(userData, event->m_signalFd, event->m_signalReadBuff))
     {
-        LOG_ERROR("{} signal queue read failed for {}({})", __func__, strsignal(signal), signal);
+        LOG_ERROR("signal queue read failed for {}({})", strsignal(signal), signal);
         return false;
     }
 
-    LOG_DEBUG("{} signal {}({}) read queued", __func__, strsignal(signal), signal);
+    LOG_DEBUG("signal {}({}) read queued", strsignal(signal), signal);
     m_pendingEvents[userData] = std::move(event);
 
     return true;
@@ -256,7 +256,7 @@ void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
 
         default:
         {
-            LOG_ERROR("{} received unknown event={}", __func__, event.NameAndType().c_str());
+            LOG_ERROR("received unknown event={}", event.NameAndType().c_str());
             break;
         }
     }
@@ -269,7 +269,7 @@ void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEven
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
     if (itr == m_timerHandlers.end())
     {
-        LOG_ERROR("{} failed to find handler for eventId({}) handlerId({})", __func__, event.m_id, event.m_handlerId);
+        LOG_ERROR("failed to find handler for eventId({}) handlerId({})", event.m_id, event.m_handlerId);
         return;
     }
 
@@ -280,7 +280,7 @@ void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEven
         // timer expired
         case -ETIME:
         {
-            LOG_DEBUG("{} [{}] triggering handler eventId({})", __func__, handler.Name(), event.m_id);
+            LOG_DEBUG("[{}] triggering handler eventId({})", handler.Name(), event.m_id);
 
             {
                 ScopedDeadline dl{ "TimerHandler:" + handler.NameStr(), 20ms };
@@ -293,14 +293,14 @@ void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEven
         // timer cancelled
         case -ECANCELED:
         {
-            LOG_DEBUG("{} [{}] timer cancelled eventId({})", __func__, handler.Name(), event.m_id);
+            LOG_DEBUG("[{}] timer cancelled eventId({})", handler.Name(), event.m_id);
             m_timerHandlers.erase(itr);
             break;
         }
 
         default:
         {
-            LOG_ERROR("{} failed eventId({}) res({}) {}", __func__, event.m_id, eventRes, strerror(-eventRes));
+            LOG_ERROR("failed eventId({}) res({}) {}", event.m_id, eventRes, strerror(-eventRes));
             break;
         }
     }
@@ -312,7 +312,7 @@ void Proactor::HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_urin
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
     if (itr == m_timerHandlers.end())
     {
-        LOG_ERROR("{} failed to find handler for eventId({}) handlerId({})", __func__, event.m_id, event.m_handlerId);
+        LOG_ERROR("failed to find handler for eventId({}) handlerId({})", event.m_id, event.m_handlerId);
         return;
     }
 
@@ -323,13 +323,13 @@ void Proactor::HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_urin
         // timer cancellation acknowledged
         case 0:
         {
-            LOG_DEBUG("{} [{}] timer cancellation acknowledged eventId({})", __func__, handler.Name(), event.m_id);
+            LOG_DEBUG("[{}] timer cancellation acknowledged eventId({})", handler.Name(), event.m_id);
             break;
         }
 
         default:
         {
-            LOG_ERROR("{} failed eventId({}) res({}) {}", __func__, event.m_id, eventRes, strerror(-eventRes));
+            LOG_ERROR("failed eventId({}) res({}) {}", event.m_id, eventRes, strerror(-eventRes));
             break;
         }
     }
@@ -340,17 +340,14 @@ void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
     int res{ cEvent.res };
     if (res < 0)
     {
-        LOG_ERROR(
-            "{} read failed for signal {}({}). {}", __func__, strsignal(event.m_signal), event.m_signal, strerror(-res)
-        );
+        LOG_ERROR("read failed for signal {}({}). {}", strsignal(event.m_signal), event.m_signal, strerror(-res));
         return;
     }
 
     if (res != sizeof(signalfd_siginfo))
     {
         LOG_ERROR(
-            "{} read failed for signal {}({}). expected-read-size({}) actual-read-size({})",
-            __func__,
+            "read failed for signal {}({}). expected-read-size({}) actual-read-size({})",
             strsignal(event.m_signal),
             event.m_signal,
             sizeof(signalfd_siginfo),
@@ -362,21 +359,19 @@ void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
     auto itr{ m_signalHandlers.find(event.m_signal) };
     if (itr == m_signalHandlers.end())
     {
-        LOG_ERROR(
-            "{} could not find signal {}({}) in handler map", __func__, strsignal(event.m_signal), event.m_signal
-        );
+        LOG_ERROR("could not find signal {}({}) in handler map", strsignal(event.m_signal), event.m_signal);
         return;
     }
 
     const auto& [sig, data]{ *itr };
 
-    LOG_INFO("{} invoking signal handler for signal {}({})", __func__, strsignal(sig), sig);
+    LOG_INFO("invoking signal handler for signal {}({})", strsignal(sig), sig);
 
     (data->m_callback)(event.m_signalReadBuff);
 
     if (not RequestSignalRead(data->m_signal, data->m_fd))
     {
-        LOG_CRITICAL("{} failed to request signal {}({}) read", __func__, strsignal(event.m_signal), event.m_signal);
+        LOG_CRITICAL("failed to request signal {}({}) read", strsignal(event.m_signal), event.m_signal);
     }
 }
 

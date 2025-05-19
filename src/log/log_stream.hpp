@@ -1,10 +1,10 @@
 #pragma once
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
-#include <mutex>
+#include <source_location>
 #include <string>
-#include <chrono>
 
 #include "log/log_levels.hpp"
 
@@ -40,14 +40,14 @@ private:
     static constexpr auto s_logFileCreatorPeriod{ std::chrono::seconds{ 60 } };
 
     std::reference_wrapper<Stream> m_streamRef{ s_consoleStream };
-    std::recursive_mutex m_mutex{};
     std::string m_logFilename{};
     Level m_logLevel{ Level::Info };
     size_t m_lostLogTime{ 0 };
     std::ofstream m_logFileStream{};
 
     template<typename... Args>
-    friend inline void LogToStream(Level level, std::format_string<Args...> fmt, Args&&... args);
+    friend inline void
+    LogToStream(Level level, std::format_string<Args...> fmt, const std::source_location& loc, Args&&... args);
 };
 
 LogStreamer& GetLogStreamer() noexcept;
