@@ -2,6 +2,7 @@
 #include "log/logger.hpp"
 #include "main/cli_args.hpp"
 #include "proactor/proactor.hpp"
+#include "proactor/tcp_client.hpp"
 #include "proactor/timer_handler.hpp"
 
 namespace Sage
@@ -13,6 +14,14 @@ public:
     TestTimerHandler() : TimerHandler{ "testHandler", 1s } {}
 
     void OnTimerExpired() override { LOG_INFO("[{}] timer expired", Name()); }
+};
+
+class TestTcpClient final : public TcpClient
+{
+public:
+    TestTcpClient() : TcpClient{ "127.0.0.1", "8080" } {}
+
+    void OnConnect() override { LOG_INFO("connected to '{}:{}'", m_host, m_port); }
 };
 
 } // namespace Sage
@@ -36,6 +45,7 @@ int main(int argc, char* const argv[])
             {
                 LogFileChecker logChecker{ Logger::EnsureLogFileExist };
                 TestTimerHandler handler;
+                TestTcpClient h2;
                 proactor->Run();
             }
 

@@ -30,6 +30,9 @@ public:
 
     bool QueueSignalRead(const UserData& data, int fd, signalfd_siginfo& readBuff);
 
+    /// @returns fd
+    int QueueTcpConnect(const UserData& data, const std::string& host, const std::string& port);
+
 private:
     IOURing(const IOURing&) = delete;
     IOURing(IOURing&&) = delete;

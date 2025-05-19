@@ -4,12 +4,14 @@
 #include <memory>
 
 #include "proactor/events.hpp"
+#include "proactor/handler.hpp"
 #include "proactor/io_uring.hpp"
 
 namespace Sage
 {
 
 class TimerHandler;
+class TcpClient;
 
 class Proactor
 {
@@ -33,6 +35,12 @@ public:
 
     void RemoveTimerHandler(TimerHandler& handler);
 
+    void AddSocketClient(TcpClient& handler);
+
+    void StartSocketClient(TcpClient& handler);
+
+    void RemoveSocketClient(TcpClient& handler);
+
 private:
     // creation via factory
     Proactor();
@@ -45,9 +53,11 @@ private:
 
     void RequestContinuousTimeout(TimerHandler& handler);
 
-    void RequestTimeoutCancel(const TimerHandler& handler);
+    void RequestTimeoutCancel(TimerHandler& handler);
 
     bool RequestSignalRead(int signal, int signalFd);
+
+    bool RequestTcpConnect(TcpClient&);
 
     void HandleEvent(Event& event, const io_uring_cqe& cEvent);
 
@@ -57,13 +67,16 @@ private:
 
     void HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
 
+    void HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent);
+
 private:
     static inline std::shared_ptr<Proactor> s_instance{ nullptr };
 
     IOURing m_ioURing{ 10'000 };
     bool m_running{ false };
     std::unordered_map<EventId, std::unique_ptr<Event>> m_pendingEvents;
-    std::unordered_map<HandlerId, TimerHandler*> m_timerHandlers;
+    std::unordered_map<Handler::Id, TimerHandler*> m_timerHandlers;
+    std::unordered_map<Handler::Id, TcpClient*> m_tcpClients;
 
     struct SignalHandleData
     {

@@ -1,9 +1,13 @@
+#include <cerrno>
 #include <csignal>
 #include <cstring>
 #include <sys/signalfd.h>
+#include <unistd.h>
 
 #include "log/logger.hpp"
+#include "proactor/events.hpp"
 #include "proactor/proactor.hpp"
+#include "proactor/tcp_client.hpp"
 #include "proactor/timer_handler.hpp"
 #include "timing/scoped_deadline.hpp"
 
@@ -24,9 +28,14 @@ Proactor::~Proactor() { LOG_INFO("proactor deleted"); }
 
 void Proactor::StartAllHandlers()
 {
-    for (auto handler : m_timerHandlers)
+    for (auto [_, handler] : m_timerHandlers)
     {
-        RequestContinuousTimeout(*(handler.second));
+        RequestContinuousTimeout(*handler);
+    }
+
+    for (auto [_, handler] : m_tcpClients)
+    {
+        RequestTcpConnect(*handler);
     }
 }
 
@@ -93,6 +102,61 @@ void Proactor::StartTimerHandler(TimerHandler& handler)
     RequestContinuousTimeout(handler);
 }
 
+void Proactor::RemoveTimerHandler(TimerHandler& handler)
+{
+    auto itr = m_timerHandlers.find(handler.m_id);
+    if (itr == m_timerHandlers.end())
+    {
+        LOG_ERROR("[{}] handler not in collection", handler.Name());
+        return;
+    }
+
+    LOG_INFO("[{}] handler removed", handler.Name());
+
+    RequestTimeoutCancel(handler);
+}
+
+void Proactor::AddSocketClient(TcpClient& handler)
+{
+    if (m_tcpClients.contains(handler.m_id))
+    {
+        LOG_ERROR("[{}] handler already in collection", handler.Name());
+        return;
+    }
+
+    m_tcpClients[handler.m_id] = &handler;
+
+    if (m_running)
+    {
+        StartSocketClient(handler);
+    }
+}
+
+void Proactor::StartSocketClient(TcpClient& handler)
+{
+    if (not m_tcpClients.contains(handler.m_id))
+    {
+        LOG_CRITICAL("[{}] handler not in collection", handler.Name());
+        return;
+    }
+
+    RequestTcpConnect(handler);
+}
+
+void Proactor::RemoveSocketClient(TcpClient& handler)
+{
+    auto itr = m_tcpClients.find(handler.m_id);
+    if (itr == m_tcpClients.end())
+    {
+        LOG_ERROR("[{}] handler not in collection", handler.Name());
+        return;
+    }
+
+    LOG_INFO("[{}] handler removed", handler.Name());
+
+    m_tcpClients.erase(itr);
+}
+
 void Proactor::RequestContinuousTimeout(TimerHandler& handler)
 {
     auto event{ std::make_unique<TimeoutEvent>(handler.m_id) };
@@ -107,20 +171,6 @@ void Proactor::RequestContinuousTimeout(TimerHandler& handler)
 
     m_pendingEvents[eventId] = std::move(event);
     LOG_DEBUG("[{}] handler kicked eventId({})", handler.Name(), eventId);
-}
-
-void Proactor::RemoveTimerHandler(TimerHandler& handler)
-{
-    auto itr = m_timerHandlers.find(handler.m_id);
-    if (itr == m_timerHandlers.end())
-    {
-        LOG_ERROR("[{}] handler not in collection", handler.Name());
-        return;
-    }
-
-    LOG_INFO("[{}] handler removed", handler.Name());
-
-    RequestTimeoutCancel(handler);
 }
 
 void Proactor::AttachExitHandlers()
@@ -190,7 +240,7 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
     }
 }
 
-void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
+void Proactor::RequestTimeoutCancel(TimerHandler& handler)
 {
     for (auto& pending : m_pendingEvents)
     {
@@ -224,7 +274,6 @@ void Proactor::RequestTimeoutCancel(const TimerHandler& handler)
 bool Proactor::RequestSignalRead(int signal, int signalFd)
 {
     auto event{ std::make_unique<SignalEvent>(signal, signalFd) };
-
     IOURing::UserData userData{ event->m_id };
     if (not m_ioURing.QueueSignalRead(userData, event->m_signalFd, event->m_signalReadBuff))
     {
@@ -233,6 +282,26 @@ bool Proactor::RequestSignalRead(int signal, int signalFd)
     }
 
     LOG_DEBUG("signal {}({}) read queued", strsignal(signal), signal);
+    m_pendingEvents[userData] = std::move(event);
+
+    return true;
+}
+
+bool Proactor::RequestTcpConnect(TcpClient& handler)
+{
+    handler.m_state = TcpClient::Broken;
+
+    auto event{ std::make_unique<TcpConnect>(handler.m_id, handler.m_host, handler.m_port) };
+    IOURing::UserData userData{ event->m_id };
+    event->m_fd = m_ioURing.QueueTcpConnect(userData, event->m_host, event->m_port);
+    if (event->m_fd == -1)
+    {
+        LOG_ERROR("net connect queue failed for '{}:{}'", handler.m_host, handler.m_port);
+        return false;
+    }
+
+    handler.m_state = TcpClient::Connecting;
+    LOG_INFO("net connect queued for '{}:{}'", handler.m_host, handler.m_port);
     m_pendingEvents[userData] = std::move(event);
 
     return true;
@@ -254,9 +323,13 @@ void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
             HandleSignalEvent(static_cast<SignalEvent&>(event), cEvent);
             break;
 
+        case EventType::TcpConnect:
+            HandleTcpConnect(static_cast<TcpConnect&>(event), cEvent);
+            break;
+
         default:
         {
-            LOG_ERROR("received unknown event={}", event.NameAndType().c_str());
+            LOG_ERROR("received unknown event={}", event.NameAndType());
             break;
         }
     }
@@ -283,7 +356,7 @@ void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEven
             LOG_DEBUG("[{}] triggering handler eventId({})", handler.Name(), event.m_id);
 
             {
-                ScopedDeadline dl{ "TimerHandler:" + handler.NameStr(), 20ms };
+                ScopedDeadline dl{ "TimerHandler:" + std::string{ handler.Name() }, 20ms };
                 handler.OnTimerExpired();
             }
 
@@ -373,6 +446,34 @@ void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
     {
         LOG_CRITICAL("failed to request signal {}({}) read", strsignal(event.m_signal), event.m_signal);
     }
+}
+
+void Proactor::HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
+{
+    int res{ cEvent.res };
+    auto itr{ m_tcpClients.find(event.m_handlerId) };
+    if (itr == m_tcpClients.end())
+    {
+        LOG_ERROR("failed to find socket client for '{}:{}'", event.m_host, event.m_port);
+        return;
+    }
+
+    auto [_, handler] = *itr;
+    handler->m_state = TcpClient::Broken;
+    if (res < 0)
+    {
+        LOG_ERROR("tcp connect res failed '{}:{}' e={}. closing fd", event.m_host, event.m_port, strerror(-res));
+
+        if (event.m_fd > 0 and ::close(event.m_fd) == -1)
+        {
+            int err{ errno };
+            LOG_ERROR("tcp connect res failed. failed to close socket. e={}", strerror(err));
+        }
+        return;
+    }
+
+    handler->m_state = TcpClient::Connected;
+    handler->OnConnect();
 }
 
 } // namespace Sage

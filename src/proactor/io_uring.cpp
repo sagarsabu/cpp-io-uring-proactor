@@ -1,4 +1,7 @@
+#include <cerrno>
 #include <cstring>
+#include <netdb.h>
+#include <sys/socket.h>
 
 #include "log/logger.hpp"
 #include "proactor/io_uring.hpp"
@@ -90,6 +93,60 @@ bool IOURing::QueueSignalRead(const UserData& data, int fd, signalfd_siginfo& re
     io_uring_prep_read(submissionEvent, fd, &readBuff, sizeof(signalfd_siginfo), 0);
 
     return SubmitEvents();
+}
+
+int IOURing::QueueTcpConnect(const UserData& data, const std::string& host, const std::string& port)
+{
+    io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    if (submissionEvent == nullptr)
+    {
+        return -1;
+    }
+
+    struct addrinfo hints{};
+    struct addrinfo* res{ nullptr };
+
+    if (int err{ getaddrinfo(host.c_str(), port.c_str(), &hints, &res) }; err != 0 or res == nullptr)
+    {
+        LOG_ERROR("failed to create socket. res-nullptr?{} e={}", res == nullptr, gai_strerror(err));
+        return -1;
+    }
+
+    int err{ 0 };
+    int sockFd{ -1 };
+    struct sockaddr addr{};
+    socklen_t addLen{};
+
+    for (auto iter{ res }; iter != nullptr; iter = iter->ai_next)
+    {
+        sockFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (sockFd == -1)
+        {
+            err = errno;
+            continue;
+        }
+
+        addr = *res->ai_addr;
+        addLen = res->ai_addrlen;
+    }
+    freeaddrinfo(res);
+
+    if (sockFd == -1)
+    {
+        LOG_ERROR("failed to create socket. e={}", strerror(err));
+        return -1;
+    }
+
+    submissionEvent->user_data = data;
+    io_uring_prep_connect(submissionEvent, sockFd, &addr, addLen);
+
+    if (SubmitEvents())
+    {
+        return sockFd;
+    }
+
+    ::close(sockFd);
+    return -1;
 }
 
 bool IOURing::SubmitEvents()
