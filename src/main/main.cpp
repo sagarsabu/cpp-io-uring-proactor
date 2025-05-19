@@ -25,7 +25,7 @@ int main(int argc, char* const argv[])
 
     try
     {
-        auto [logLevel, logFile]{ GetCLiArgs(argc, argv) };
+        auto [logLevel, logFile]{ GetCliArgs(argc, argv) };
         Logger::SetupLogger(logFile, logLevel);
 
         LOG_INFO("cpp-io-uring-proactor starting");
