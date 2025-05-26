@@ -34,10 +34,13 @@ public:
     std::string m_host;
     std::string m_port;
     std::string m_tag;
+    int m_fd{ -1 };
     State m_state{ Unknown };
 
 private:
     const Handler::Id m_id{ Handler::NextId() };
+
+    bool CheckSocketConnected();
 
     friend class Proactor;
 };

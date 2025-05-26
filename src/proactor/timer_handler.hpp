@@ -18,6 +18,8 @@ public:
 
     std::string_view Name() const noexcept { return m_name; }
 
+    void UpdateInterval(const TimeNS& period);
+
 private:
     TimerHandler() = delete;
     TimerHandler(const TimerHandler&) = delete;

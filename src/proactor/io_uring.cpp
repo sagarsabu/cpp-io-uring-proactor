@@ -46,7 +46,7 @@ UniqueUringCEvent IOURing::WaitForEvent()
                               } };
 }
 
-bool IOURing::QueueTimeoutEvent(const UserData& data, TimeNS timeout)
+bool IOURing::QueueTimeoutEvent(const UserData& data, const TimeNS& timeout)
 {
     io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
     if (submissionEvent == nullptr)
@@ -61,7 +61,7 @@ bool IOURing::QueueTimeoutEvent(const UserData& data, TimeNS timeout)
         &ts,
         0,
         // ensure timeout keeps firing without rearming
-        IORING_TIMEOUT_MULTISHOT
+        IORING_TIMEOUT_MULTISHOT | IORING_TIMEOUT_BOOTTIME
     );
 
     return SubmitEvents();
@@ -77,6 +77,21 @@ bool IOURing::CancelTimeoutEvent(const UserData& cancelData, const UserData& tim
 
     submissionEvent->user_data = cancelData;
     io_uring_prep_timeout_remove(submissionEvent, timeoutData, 0);
+
+    return SubmitEvents();
+}
+
+bool IOURing::UpdateTimeoutEvent(const UserData& updateData, const UserData& timeoutData, const TimeNS& timeout)
+{
+    io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    if (submissionEvent == nullptr)
+    {
+        return false;
+    }
+
+    submissionEvent->user_data = updateData;
+    __kernel_timespec ts{ ChronoTimeToKernelTimeSpec(timeout) };
+    io_uring_prep_timeout_update(submissionEvent, &ts, timeoutData, 0);
 
     return SubmitEvents();
 }
@@ -145,8 +160,28 @@ int IOURing::QueueTcpConnect(const UserData& data, const std::string& host, cons
         return sockFd;
     }
 
-    ::close(sockFd);
+    if (::close(sockFd) != 0)
+    {
+        int err{ errno };
+        LOG_ERROR("failed to closed fd. {}", strerror(err));
+    }
     return -1;
+}
+
+bool IOURing::QueueRcpRecv(const UserData& data, const std::string&, const std::string&)
+{
+    // TODO
+
+    // io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    // if (submissionEvent == nullptr)
+    // {
+    //     return false;
+    // }
+
+    // submissionEvent->user_data = data;
+
+    // return SubmitEvents();
+    return false;
 }
 
 bool IOURing::SubmitEvents()

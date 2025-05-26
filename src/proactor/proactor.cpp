@@ -1,4 +1,5 @@
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstring>
 #include <sys/signalfd.h>
@@ -30,7 +31,7 @@ void Proactor::StartAllHandlers()
 {
     for (auto [_, handler] : m_timerHandlers)
     {
-        RequestContinuousTimeout(*handler);
+        RequestTimerContinuous(*handler);
     }
 
     for (auto [_, handler] : m_tcpClients)
@@ -68,7 +69,7 @@ void Proactor::Run()
         HandleEvent(*event, *cEvent);
 
         // dont remove the continuously firing timer
-        if (event->Type() != EventType::Timeout)
+        if (event->Type() != EventType::TimerExpired)
         {
             m_pendingEvents.erase(itr);
         }
@@ -79,7 +80,7 @@ void Proactor::AddTimerHandler(TimerHandler& handler)
 {
     if (m_timerHandlers.contains(handler.m_id))
     {
-        LOG_ERROR("[{}] handler already in collection", handler.Name());
+        LOG_ERROR("[{}] timer handler already in collection", handler.Name());
         return;
     }
 
@@ -99,7 +100,18 @@ void Proactor::StartTimerHandler(TimerHandler& handler)
         return;
     }
 
-    RequestContinuousTimeout(handler);
+    RequestTimerContinuous(handler);
+}
+
+void Proactor::UpdateTimerHandler(TimerHandler& handler)
+{
+    if (not m_timerHandlers.contains(handler.m_id))
+    {
+        LOG_CRITICAL("[{}] handler not in collection", handler.Name());
+        return;
+    }
+
+    RequestTimerUpdate(handler);
 }
 
 void Proactor::RemoveTimerHandler(TimerHandler& handler)
@@ -113,7 +125,7 @@ void Proactor::RemoveTimerHandler(TimerHandler& handler)
 
     LOG_INFO("[{}] handler removed", handler.Name());
 
-    RequestTimeoutCancel(handler);
+    RequestTimerCancel(handler);
 }
 
 void Proactor::AddSocketClient(TcpClient& handler)
@@ -157,9 +169,9 @@ void Proactor::RemoveSocketClient(TcpClient& handler)
     m_tcpClients.erase(itr);
 }
 
-void Proactor::RequestContinuousTimeout(TimerHandler& handler)
+void Proactor::RequestTimerContinuous(TimerHandler& handler)
 {
-    auto event{ std::make_unique<TimeoutEvent>(handler.m_id) };
+    auto event{ std::make_unique<TimerExpiredEvent>(handler.m_id) };
     auto eventId{ event->m_id };
 
     if (auto data{ static_cast<IOURing::UserData>(event->m_id) };
@@ -170,7 +182,58 @@ void Proactor::RequestContinuousTimeout(TimerHandler& handler)
     }
 
     m_pendingEvents[eventId] = std::move(event);
-    LOG_DEBUG("[{}] handler kicked eventId({})", handler.Name(), eventId);
+    LOG_DEBUG("[{}] timer kicked eventId({})", handler.Name(), eventId);
+}
+
+void Proactor::RequestTimerUpdate(TimerHandler& handler)
+{
+    const auto timerExpireEvent{ FindPendingEvent(handler.m_id, EventType::TimerExpired) };
+    if (timerExpireEvent == nullptr)
+    {
+        LOG_ERROR("[{}] failed to find pending expiry timer for handler {}", handler.Name(), handler.m_id);
+        return;
+    }
+
+    std::unique_ptr<TimerUpdateEvent> updateEvent{ std::make_unique<TimerUpdateEvent>(handler.m_id) };
+    // the timeout user data must be the same as the inital timeout used data
+    IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
+    IOURing::UserData userData{ updateEvent->m_id };
+    if (not m_ioURing.UpdateTimeoutEvent(userData, currentTimerUserData, handler.m_period))
+    {
+        LOG_ERROR("[{}] update timer failed", handler.Name());
+        return;
+    }
+
+    m_pendingEvents[userData] = std::move(updateEvent);
+    LOG_INFO(
+        "[{}] timer update triggered eventId({}) new-timeout: {}",
+        handler.Name(),
+        timerExpireEvent->m_id,
+        std::chrono::duration_cast<TimeMS>(handler.m_period)
+    );
+}
+
+void Proactor::RequestTimerCancel(TimerHandler& handler)
+{
+    const auto timerExpireEvent{ FindPendingEvent(handler.m_id, EventType::TimerExpired) };
+    if (timerExpireEvent == nullptr)
+    {
+        LOG_ERROR("[{}] failed to find pending expiry timer for handler {}", handler.Name(), handler.m_id);
+        return;
+    }
+
+    std::unique_ptr<TimerCancelEvent> cancelEvent{ std::make_unique<TimerCancelEvent>(handler.m_id) };
+    // the timeout user data must be the same as the inital timeout used data
+    IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
+    IOURing::UserData userData{ cancelEvent->m_id };
+    if (not m_ioURing.CancelTimeoutEvent(userData, currentTimerUserData))
+    {
+        LOG_ERROR("[{}] cancel failed", handler.Name());
+        return;
+    }
+
+    m_pendingEvents[userData] = std::move(cancelEvent);
+    LOG_DEBUG("[{}] handler cancel triggered eventId({})", handler.Name(), timerExpireEvent->m_id);
 }
 
 void Proactor::AttachExitHandlers()
@@ -201,6 +264,13 @@ void Proactor::AttachExitHandlers()
     for (auto sig : exitSignals)
     {
         AddSignalHandler(sig, handler);
+    }
+
+    if (::signal(SIGPIPE, SIG_IGN) != 0)
+    {
+        int err{ errno };
+        LOG_CRITICAL("failed to ignore sigpipe. e: {}", strerror(err));
+        std::exit(1);
     }
 }
 
@@ -240,37 +310,6 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
     }
 }
 
-void Proactor::RequestTimeoutCancel(TimerHandler& handler)
-{
-    for (auto& pending : m_pendingEvents)
-    {
-        if (pending.second->Type() != EventType::Timeout)
-        {
-            continue;
-        }
-
-        auto& timerExpireEvent{ static_cast<TimeoutEvent&>(*pending.second) };
-        // cancel only the requested handler
-        if (timerExpireEvent.m_handlerId != handler.m_id)
-        {
-            continue;
-        }
-
-        std::unique_ptr<TimeoutCancelEvent> cancelEvent{ std::make_unique<TimeoutCancelEvent>(handler.m_id) };
-        // the timeout user data must be the same as the inital timeout used data
-        IOURing::UserData currentTimerUserData{ timerExpireEvent.m_id };
-        IOURing::UserData userData{ cancelEvent->m_id };
-        if (not m_ioURing.CancelTimeoutEvent(userData, currentTimerUserData))
-        {
-            LOG_ERROR("[{}] cancel failed", handler.Name());
-            continue;
-        }
-
-        m_pendingEvents[userData] = std::move(cancelEvent);
-        LOG_DEBUG("[{}] handler cancel triggered eventId({})", handler.Name(), timerExpireEvent.m_id);
-    }
-}
-
 bool Proactor::RequestSignalRead(int signal, int signalFd)
 {
     auto event{ std::make_unique<SignalEvent>(signal, signalFd) };
@@ -301,7 +340,7 @@ bool Proactor::RequestTcpConnect(TcpClient& handler)
     }
 
     handler.m_state = TcpClient::Connecting;
-    LOG_INFO("net connect queued for '{}:{}'", handler.m_host, handler.m_port);
+    LOG_DEBUG("net connect queued for '{}:{}'", handler.m_host, handler.m_port);
     m_pendingEvents[userData] = std::move(event);
 
     return true;
@@ -311,12 +350,16 @@ void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
 {
     switch (event.Type())
     {
-        case EventType::Timeout:
-            HandleTimeoutEvent(static_cast<TimeoutEvent&>(event), cEvent);
+        case EventType::TimerExpired:
+            HandleTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent);
             break;
 
-        case EventType::TimeoutCancel:
-            HandleTimeoutCancelEvent(static_cast<TimeoutCancelEvent&>(event), cEvent);
+        case EventType::TimerUpdate:
+            HandleTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent);
+            break;
+
+        case EventType::TimerCancel:
+            HandleTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent);
             break;
 
         case EventType::Signal:
@@ -335,7 +378,7 @@ void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
     }
 }
 
-void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEvent)
+void Proactor::HandleTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
 
@@ -379,7 +422,36 @@ void Proactor::HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEven
     }
 }
 
-void Proactor::HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_uring_cqe& cEvent)
+void Proactor::HandleTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent)
+{
+    int eventRes{ cEvent.res };
+    auto itr{ m_timerHandlers.find(event.m_handlerId) };
+    if (itr == m_timerHandlers.end())
+    {
+        LOG_ERROR("failed to find handler for eventId({}) handlerId({})", event.m_id, event.m_handlerId);
+        return;
+    }
+
+    auto& handler{ *itr->second };
+
+    switch (eventRes)
+    {
+        // timer update acknowledged
+        case 0:
+        {
+            LOG_DEBUG("[{}] timer update acknowledged eventId({})", handler.Name(), event.m_id);
+            break;
+        }
+
+        default:
+        {
+            LOG_ERROR("failed eventId({}) res({}) {}", event.m_id, eventRes, strerror(-eventRes));
+            break;
+        }
+    }
+}
+
+void Proactor::HandleTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
@@ -473,7 +545,28 @@ void Proactor::HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
     }
 
     handler->m_state = TcpClient::Connected;
+    handler->m_fd = event.m_fd;
     handler->OnConnect();
+}
+
+Event* Proactor::FindPendingEvent(Handler::Id id, EventType eType)
+{
+    for (auto& [_, pending] : m_pendingEvents)
+    {
+        if (pending->Type() != eType)
+        {
+            continue;
+        }
+
+        if (pending->m_handlerId != id)
+        {
+            continue;
+        }
+
+        return pending.get();
+    }
+
+    return nullptr;
 }
 
 } // namespace Sage
