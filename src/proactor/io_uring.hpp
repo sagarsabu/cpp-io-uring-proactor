@@ -24,14 +24,18 @@ public:
 
     UniqueUringCEvent WaitForEvent();
 
-    bool QueueTimeoutEvent(const UserData& data, TimeNS timeout);
+    bool QueueTimeoutEvent(const UserData& data, const TimeNS& timeout);
 
     bool CancelTimeoutEvent(const UserData& cancelData, const UserData& timeoutData);
+
+    bool UpdateTimeoutEvent(const UserData& cancelData, const UserData& timeoutData, const TimeNS& timeout);
 
     bool QueueSignalRead(const UserData& data, int fd, signalfd_siginfo& readBuff);
 
     /// @returns fd
     int QueueTcpConnect(const UserData& data, const std::string& host, const std::string& port);
+
+    bool QueueRcpRecv(const UserData& data, const std::string& host, const std::string& port);
 
 private:
     IOURing(const IOURing&) = delete;

@@ -5,16 +5,18 @@
 #include <sys/signalfd.h>
 
 #include "proactor/handler.hpp"
-#include "utils/aliases.hpp"
 #include "utils/demangled_name.hpp"
 
 namespace Sage
 {
 
-enum class EventType : std::uint32_t
+using EventId = size_t;
+
+enum class EventType : uint32_t
 {
-    Timeout = 1,
-    TimeoutCancel,
+    TimerExpired = 1,
+    TimerUpdate,
+    TimerCancel,
     Signal,
     TcpConnect,
 };
@@ -34,9 +36,10 @@ public:
     }
 
     const EventId m_id{ NextId() };
+    const Handler::Id m_handlerId;
 
 protected:
-    explicit Event(EventType type) noexcept : m_type{ type } {}
+    Event(Handler::Id handlerId, EventType type) noexcept : m_handlerId{ handlerId }, m_type{ type } {}
 
 private:
     Event() = delete;
@@ -51,26 +54,28 @@ private:
     const EventType m_type;
 };
 
-class TimeoutEvent final : public Event
+class TimerExpiredEvent final : public Event
 {
 public:
-    explicit TimeoutEvent(Handler::Id handlerId) : Event{ EventType::Timeout }, m_handlerId{ handlerId } {}
-
-    Handler::Id m_handlerId;
+    explicit TimerExpiredEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerExpired } {}
 };
 
-class TimeoutCancelEvent final : public Event
+class TimerUpdateEvent final : public Event
 {
 public:
-    explicit TimeoutCancelEvent(Handler::Id handlerId) : Event{ EventType::TimeoutCancel }, m_handlerId{ handlerId } {}
+    explicit TimerUpdateEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerUpdate } {}
+};
 
-    Handler::Id m_handlerId;
+class TimerCancelEvent final : public Event
+{
+public:
+    explicit TimerCancelEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerCancel } {}
 };
 
 class SignalEvent final : public Event
 {
 public:
-    SignalEvent(int sig, int sigFd) : Event{ EventType::Signal }, m_signal{ sig }, m_signalFd{ sigFd } {}
+    SignalEvent(int sig, int sigFd) : Event{ 0, EventType::Signal }, m_signal{ sig }, m_signalFd{ sigFd } {}
 
     int m_signal;
     int m_signalFd;
@@ -81,14 +86,12 @@ class TcpConnect final : public Event
 {
 public:
     TcpConnect(Handler::Id handlerId, const std::string& host, const std::string& port) :
-        Event{ EventType::TcpConnect },
-        m_handlerId{ handlerId },
+        Event{ handlerId, EventType::TcpConnect },
         m_host{ host },
         m_port{ port }
     {
     }
 
-    Handler::Id m_handlerId;
     std::string m_host;
     std::string m_port;
     int m_fd{ -1 };

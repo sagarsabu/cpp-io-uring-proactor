@@ -33,6 +33,8 @@ public:
 
     void StartTimerHandler(TimerHandler& handler);
 
+    void UpdateTimerHandler(TimerHandler& handler);
+
     void RemoveTimerHandler(TimerHandler& handler);
 
     void AddSocketClient(TcpClient& handler);
@@ -51,9 +53,11 @@ private:
 
     void AddSignalHandler(int signal, SignalHandleFunc&& func);
 
-    void RequestContinuousTimeout(TimerHandler& handler);
+    void RequestTimerContinuous(TimerHandler& handler);
 
-    void RequestTimeoutCancel(TimerHandler& handler);
+    void RequestTimerUpdate(TimerHandler& handler);
+
+    void RequestTimerCancel(TimerHandler& handler);
 
     bool RequestSignalRead(int signal, int signalFd);
 
@@ -61,13 +65,17 @@ private:
 
     void HandleEvent(Event& event, const io_uring_cqe& cEvent);
 
-    void HandleTimeoutEvent(TimeoutEvent& event, const io_uring_cqe& cEvent);
+    void HandleTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent);
 
-    void HandleTimeoutCancelEvent(TimeoutCancelEvent& event, const io_uring_cqe& cEvent);
+    void HandleTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent);
+
+    void HandleTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent);
 
     void HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
 
     void HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent);
+
+    Event* FindPendingEvent(Handler::Id id, EventType eType);
 
 private:
     static inline std::shared_ptr<Proactor> s_instance{ nullptr };

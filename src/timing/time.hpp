@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // Useful aliases
 
-using Clock = std::chrono::high_resolution_clock;
+using Clock = std::chrono::steady_clock;
 using TimeNS = std::chrono::nanoseconds;
 using TimeUS = std::chrono::microseconds;
 using TimeMS = std::chrono::milliseconds;
