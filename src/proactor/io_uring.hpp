@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <sys/signalfd.h>
+#include <sys/types.h>
 
 #include "proactor/sys_liburing.hpp" // IWYU pragma: keep
 #include "timing/time.hpp"
@@ -35,7 +36,9 @@ public:
     /// @returns fd
     int QueueTcpConnect(const UserData& data, const std::string& host, const std::string& port);
 
-    bool QueueRcpRecv(const UserData& data, const std::string& host, const std::string& port);
+    bool QueueTcpSend(const UserData& data, int fd, std::string_view buffer);
+
+    bool QueueTcpRecv(const UserData& data, const std::string& host, const std::string& port);
 
 private:
     IOURing(const IOURing&) = delete;

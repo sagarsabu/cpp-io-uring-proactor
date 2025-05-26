@@ -23,9 +23,9 @@ public:
 
     TcpClient(const std::string& host, const std::string& port);
 
-    ~TcpClient();
+    ~TcpClient() override;
 
-    std::string_view Name() noexcept;
+    std::string_view ClientName() const noexcept;
 
     virtual void OnConnect() = 0;
 

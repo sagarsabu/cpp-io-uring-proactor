@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <sys/signalfd.h>
@@ -19,6 +20,7 @@ enum class EventType : uint32_t
     TimerCancel,
     Signal,
     TcpConnect,
+    TcpSend,
 };
 
 class Event
@@ -95,6 +97,24 @@ public:
     std::string m_host;
     std::string m_port;
     int m_fd{ -1 };
+};
+
+class TcpSend final : public Event
+{
+public:
+    TcpSend(Handler::Id handlerId, const std::string& host, const std::string& port, int fd, std::string data) :
+        Event{ handlerId, EventType::TcpSend },
+        m_host{ host },
+        m_port{ port },
+        m_fd{ fd },
+        m_data{ std::move(data) }
+    {
+    }
+
+    std::string m_host;
+    std::string m_port;
+    int m_fd;
+    std::string m_data;
 };
 
 } // namespace Sage

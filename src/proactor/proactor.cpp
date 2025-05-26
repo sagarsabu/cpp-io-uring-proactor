@@ -4,6 +4,7 @@
 #include <cstring>
 #include <sys/signalfd.h>
 #include <unistd.h>
+#include <utility>
 
 #include "log/logger.hpp"
 #include "proactor/events.hpp"
@@ -66,7 +67,7 @@ void Proactor::Run()
         auto& event{ itr->second };
         LOG_DEBUG("got event={}", event->NameAndType());
 
-        HandleEvent(*event, *cEvent);
+        CompleteEvent(*event, *cEvent);
 
         // dont remove the continuously firing timer
         if (event->Type() != EventType::TimerExpired)
@@ -326,7 +327,7 @@ bool Proactor::RequestSignalRead(int signal, int signalFd)
     return true;
 }
 
-bool Proactor::RequestTcpConnect(TcpClient& handler)
+void Proactor::RequestTcpConnect(TcpClient& handler)
 {
     handler.m_state = TcpClient::Broken;
 
@@ -336,38 +337,56 @@ bool Proactor::RequestTcpConnect(TcpClient& handler)
     if (event->m_fd == -1)
     {
         LOG_ERROR("net connect queue failed for '{}:{}'", handler.m_host, handler.m_port);
-        return false;
+        return;
     }
 
     handler.m_state = TcpClient::Connecting;
     LOG_DEBUG("net connect queued for '{}:{}'", handler.m_host, handler.m_port);
     m_pendingEvents[userData] = std::move(event);
-
-    return true;
 }
 
-void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
+void Proactor::RequestTcpSend(TcpClient& handler, std::string data)
+{
+    auto event{
+        std::make_unique<TcpSend>(handler.m_id, handler.m_host, handler.m_port, handler.m_fd, std::move(data))
+    };
+    IOURing::UserData userData{ event->m_id };
+
+    if (not m_ioURing.QueueTcpSend(userData, event->m_fd, event->m_data))
+    {
+        LOG_ERROR("[{}] failed to queue tcp send", handler.Name());
+        return;
+    }
+
+    m_pendingEvents[userData] = std::move(event);
+}
+
+void Proactor::CompleteEvent(Event& event, const io_uring_cqe& cEvent)
 {
     switch (event.Type())
     {
         case EventType::TimerExpired:
-            HandleTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent);
+            CompleteTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent);
             break;
 
         case EventType::TimerUpdate:
-            HandleTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent);
+            CompleteTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent);
             break;
 
         case EventType::TimerCancel:
-            HandleTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent);
+            CompleteTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent);
             break;
 
         case EventType::Signal:
-            HandleSignalEvent(static_cast<SignalEvent&>(event), cEvent);
+            CompleteSignalEvent(static_cast<SignalEvent&>(event), cEvent);
             break;
 
         case EventType::TcpConnect:
-            HandleTcpConnect(static_cast<TcpConnect&>(event), cEvent);
+            CompleteTcpConnect(static_cast<TcpConnect&>(event), cEvent);
+            break;
+
+        case EventType::TcpSend:
+            CompleteTcpSend(static_cast<TcpSend&>(event), cEvent);
             break;
 
         default:
@@ -378,7 +397,7 @@ void Proactor::HandleEvent(Event& event, const io_uring_cqe& cEvent)
     }
 }
 
-void Proactor::HandleTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
 
@@ -422,7 +441,7 @@ void Proactor::HandleTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_
     }
 }
 
-void Proactor::HandleTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
@@ -451,7 +470,7 @@ void Proactor::HandleTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cq
     }
 }
 
-void Proactor::HandleTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
@@ -480,7 +499,7 @@ void Proactor::HandleTimerCancelEvent(TimerCancelEvent& event, const io_uring_cq
     }
 }
 
-void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
 {
     int res{ cEvent.res };
     if (res < 0)
@@ -520,7 +539,7 @@ void Proactor::HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent)
     }
 }
 
-void Proactor::HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
 {
     int res{ cEvent.res };
     auto itr{ m_tcpClients.find(event.m_handlerId) };
@@ -534,12 +553,12 @@ void Proactor::HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
     handler->m_state = TcpClient::Broken;
     if (res < 0)
     {
-        LOG_ERROR("tcp connect res failed '{}:{}' e={}. closing fd", event.m_host, event.m_port, strerror(-res));
+        LOG_ERROR("[{}] tcp connect failed. {}. closing fd", handler->Name(), strerror(-res));
 
         if (event.m_fd > 0 and ::close(event.m_fd) == -1)
         {
             int err{ errno };
-            LOG_ERROR("tcp connect res failed. failed to close socket. e={}", strerror(err));
+            LOG_ERROR("[{}] tcp connect res failed. failed to close socket. {}", handler->Name(), strerror(err));
         }
         return;
     }
@@ -547,6 +566,23 @@ void Proactor::HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
     handler->m_state = TcpClient::Connected;
     handler->m_fd = event.m_fd;
     handler->OnConnect();
+}
+
+void Proactor::CompleteTcpSend(TcpSend& event, const io_uring_cqe& cEvent)
+{
+    int res{ cEvent.res };
+    auto itr{ m_tcpClients.find(event.m_handlerId) };
+    if (itr == m_tcpClients.end())
+    {
+        LOG_ERROR("failed to find socket client for '{}:{}'", event.m_host, event.m_port);
+        return;
+    }
+
+    auto [_, handler] = *itr;
+    if (res < 0)
+    {
+        LOG_ERROR("[{}] tcp send res failed. {}", handler->Name(), strerror(-res));
+    }
 }
 
 Event* Proactor::FindPendingEvent(Handler::Id id, EventType eType)

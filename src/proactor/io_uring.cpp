@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <cstring>
 #include <netdb.h>
+#include <string_view>
 #include <sys/socket.h>
 
 #include "log/logger.hpp"
@@ -162,14 +163,27 @@ int IOURing::QueueTcpConnect(const UserData& data, const std::string& host, cons
 
     if (::close(sockFd) != 0)
     {
-        int err{ errno };
-        LOG_ERROR("failed to closed fd. {}", strerror(err));
+        int closeErr{ errno };
+        LOG_ERROR("failed to closed fd. {}", strerror(closeErr));
     }
     return -1;
 }
 
+bool IOURing::QueueTcpSend(const UserData& data, int fd, std::string_view buffer)
+{
+    io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    if (submissionEvent == nullptr)
+    {
+        return false;
+    }
 
-bool IOURing::QueueRcpRecv(const UserData&, const std::string&, const std::string&)
+    submissionEvent->user_data = data;
+    io_uring_prep_send(submissionEvent, fd, buffer.data(), buffer.size(), 0);
+
+    return SubmitEvents();
+}
+
+bool IOURing::QueueTcpRecv(const UserData&, const std::string&, const std::string&)
 {
     // TODO
 
@@ -190,7 +204,7 @@ bool IOURing::SubmitEvents()
     int res{ io_uring_submit(&m_rawIOURing) };
     bool success{ res >= 0 };
 
-    if (success)
+    if (success) [[likely]]
     {
         LOG_TRACE("submitted {} event(s)", res);
     }

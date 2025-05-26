@@ -43,6 +43,8 @@ public:
 
     void RemoveSocketClient(TcpClient& handler);
 
+    void RequestTcpSend(TcpClient&, std::string);
+
 private:
     // creation via factory
     Proactor();
@@ -61,23 +63,25 @@ private:
 
     bool RequestSignalRead(int signal, int signalFd);
 
-    bool RequestTcpConnect(TcpClient&);
+    void RequestTcpConnect(TcpClient&);
 
-    void HandleEvent(Event& event, const io_uring_cqe& cEvent);
+    void CompleteEvent(Event& event, const io_uring_cqe& cEvent);
 
-    void HandleTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent);
+    void CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent);
 
-    void HandleTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent);
+    void CompleteTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent);
 
-    void HandleTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent);
+    void CompleteTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent);
 
-    void HandleSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
+    void CompleteSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
 
-    void HandleTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent);
+    void CompleteTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent);
 
-    Event* FindPendingEvent(Handler::Id id, EventType eType);
+    void CompleteTcpSend(TcpSend& event, const io_uring_cqe& cEvent);
 
 private:
+    Event* FindPendingEvent(Handler::Id id, EventType eType);
+
     static inline std::shared_ptr<Proactor> s_instance{ nullptr };
 
     IOURing m_ioURing{ 10'000 };

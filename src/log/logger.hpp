@@ -43,9 +43,9 @@ LogTimestamp GetCurrentTimeStamp() noexcept;
 
 inline bool ShouldLog(Level level) noexcept { return level >= GetLogStreamer().GetLogLevel(); }
 
-constexpr std::string_view GetFilenameStem(const std::string_view fname) noexcept
+constexpr std::string_view GetFilenameStem(const std::string_view fileName) noexcept
 {
-    const std::string_view fnameStem{ fname };
+    const std::string_view fnameStem{ fileName };
     const size_t pos{ fnameStem.find_last_of('/') };
 
     if (pos == std::string_view::npos)

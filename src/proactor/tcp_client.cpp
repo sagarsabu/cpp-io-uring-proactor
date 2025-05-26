@@ -16,12 +16,17 @@ TcpClient::TcpClient(const std::string& host, const std::string& port) :
     m_port{ port },
     m_tag{ host + '@' + port }
 {
+    LOG_DEBUG("[{}] c'tor", ClientName());
     Proactor::Instance()->AddSocketClient(*this);
 }
 
-TcpClient::~TcpClient() { Proactor::Instance()->RemoveSocketClient(*this); }
+TcpClient::~TcpClient()
+{
+    LOG_DEBUG("[{}] d'tor", ClientName());
+    Proactor::Instance()->RemoveSocketClient(*this);
+}
 
-std::string_view TcpClient::Name() noexcept { return m_tag; }
+std::string_view TcpClient::ClientName() const noexcept { return m_tag; }
 
 void TcpClient::OnTimerExpired()
 {
@@ -46,6 +51,7 @@ void TcpClient::OnTimerExpired()
         {
             if (not CheckSocketConnected())
             {
+                UpdateInterval(20ms);
                 m_state = Broken;
                 if (::close(m_fd) != 0)
                 {
@@ -54,8 +60,12 @@ void TcpClient::OnTimerExpired()
                 }
                 m_fd = -1;
             }
+            else
+            {
+                UpdateInterval(1s);
+                Proactor::Instance()->RequestTcpSend(*this, "client saying hi\n");
+            }
 
-            UpdateInterval(20ms);
             break;
         }
     }
