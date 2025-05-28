@@ -46,7 +46,6 @@ void TcpClient::OnTimerExpired()
             break;
         }
 
-        // TODO: check its still connected
         case Connected:
         {
             if (not CheckSocketConnected())

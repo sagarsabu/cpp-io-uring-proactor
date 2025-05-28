@@ -4,8 +4,8 @@
 #include <memory>
 #include <sys/signalfd.h>
 #include <sys/types.h>
+#include <liburing.h>
 
-#include "proactor/sys_liburing.hpp" // IWYU pragma: keep
 #include "timing/time.hpp"
 
 namespace Sage

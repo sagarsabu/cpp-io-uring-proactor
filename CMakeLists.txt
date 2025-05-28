@@ -51,7 +51,13 @@ find_library(LIB_RT NAMES rt REQUIRED)
 target_include_directories(
   cpp-io-uring-proactor
   PRIVATE src/
-  PRIVATE SYSTEM ${LIBURING_PREFIX}/include)
+)
+
+target_include_directories(
+  cpp-io-uring-proactor
+  SYSTEM
+  PRIVATE ${LIBURING_PREFIX}/include
+)
 
 target_link_directories(cpp-io-uring-proactor PRIVATE ${LIBURING_PREFIX}/lib)
 
