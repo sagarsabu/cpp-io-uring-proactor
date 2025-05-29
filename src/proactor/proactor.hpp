@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "proactor/events.hpp"
-#include "proactor/handler.hpp"
+#include "proactor/handle.hpp"
 #include "proactor/io_uring.hpp"
 
 namespace Sage
@@ -16,7 +16,7 @@ class TcpClient;
 class Proactor
 {
 public:
-    using SignalHandleFunc = std::function<void(const signalfd_siginfo&)>;
+    using SignalHandleFunc = std::move_only_function<void(const signalfd_siginfo&)>;
 
 public:
     static std::shared_ptr<Proactor> Create();
@@ -84,21 +84,43 @@ private:
     void CompleteTcpRecv(TcpRecv& event, const io_uring_cqe& cEvent);
 
 private:
-    Event* FindPendingEvent(Handler::Id id, EventType eType);
+
+    template<typename ET> auto FindPendingEvent(Handle::Id id)
+    {
+        ET* res{ nullptr };
+        for (auto& [_, pending] : m_pendingEvents)
+        {
+            auto child{ dynamic_cast<ET*>(pending.get()) };
+            if (child == nullptr)
+            {
+                continue;
+            }
+
+            if (pending->m_handlerId != id)
+            {
+                continue;
+            }
+
+            res = child;
+            break;
+        }
+
+        return res;
+    }
 
     static inline std::shared_ptr<Proactor> s_instance{ nullptr };
 
     IOURing m_ioURing{ 10'000 };
     bool m_running{ false };
     std::unordered_map<EventId, std::unique_ptr<Event>> m_pendingEvents;
-    std::unordered_map<Handler::Id, TimerHandler*> m_timerHandlers;
-    std::unordered_map<Handler::Id, TcpClient*> m_tcpClients;
+    std::unordered_map<Handle::Id, TimerHandler*> m_timerHandlers;
+    std::unordered_map<Handle::Id, TcpClient*> m_tcpClients;
 
     struct SignalHandleData
     {
         const int m_fd;
         const int m_signal;
-        const SignalHandleFunc m_callback;
+        SignalHandleFunc m_callback;
     };
 
     // map signal num -> handler data

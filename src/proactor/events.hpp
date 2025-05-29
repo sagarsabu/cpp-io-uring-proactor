@@ -1,11 +1,12 @@
 #pragma once
 
-#include <cstdint>
+#include <functional>
+#include <liburing.h>
 #include <limits>
 #include <string>
 #include <sys/signalfd.h>
 
-#include "proactor/handler.hpp"
+#include "proactor/handle.hpp"
 #include "proactor/io_uring.hpp"
 #include "utils/demangled_name.hpp"
 
@@ -14,36 +15,26 @@ namespace Sage
 
 using EventId = size_t;
 
-enum class EventType : uint32_t
-{
-    TimerExpired = 1,
-    TimerUpdate,
-    TimerCancel,
-    Signal,
-    TcpConnect,
-    TcpSend,
-    TcpRecv,
-};
-
 class Event
 {
 public:
+    using OnCompleteFunc = std::move_only_function<void(Event&, const io_uring_cqe&)>;
+
     virtual ~Event() noexcept = default;
 
-    EventType Type() const noexcept { return m_type; }
-
-    std::string NameAndType() const
-    {
-        const std::string className{ DemangleTypeName(*this) };
-        const std::string eventType{ std::to_string(static_cast<int>(Type())) };
-        return className + '(' + eventType + ')';
-    }
+    std::string NameAndType() const { return DemangleTypeName(*this); }
 
     const EventId m_id{ NextId() };
-    const Handler::Id m_handlerId;
+    const Handle::Id m_handlerId;
+    OnCompleteFunc m_onCompleteCb;
+    bool m_removeOnComplete{ true };
 
 protected:
-    Event(Handler::Id handlerId, EventType type) noexcept : m_handlerId{ handlerId }, m_type{ type } {}
+    Event(Handle::Id handlerId, OnCompleteFunc&& onComplete) noexcept :
+        m_handlerId{ handlerId },
+        m_onCompleteCb{ std::move(onComplete) }
+    {
+    }
 
 private:
     Event() = delete;
@@ -54,32 +45,38 @@ private:
         id = std::min(id + 1, std::numeric_limits<EventId>::max() - 1);
         return id;
     }
-
-    const EventType m_type;
 };
 
 class TimerExpiredEvent final : public Event
 {
 public:
-    explicit TimerExpiredEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerExpired } {}
+    TimerExpiredEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) }
+    {
+        m_removeOnComplete = false;
+    }
 };
 
 class TimerUpdateEvent final : public Event
 {
 public:
-    explicit TimerUpdateEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerUpdate } {}
+    TimerUpdateEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) } {}
 };
 
 class TimerCancelEvent final : public Event
 {
 public:
-    explicit TimerCancelEvent(Handler::Id handlerId) : Event{ handlerId, EventType::TimerCancel } {}
+    TimerCancelEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) } {}
 };
 
 class SignalEvent final : public Event
 {
 public:
-    SignalEvent(int sig, int sigFd) : Event{ 0, EventType::Signal }, m_signal{ sig }, m_signalFd{ sigFd } {}
+    SignalEvent(int sig, int sigFd, OnCompleteFunc&& onComplete) :
+        Event{ 0, std::move(onComplete) },
+        m_signal{ sig },
+        m_signalFd{ sigFd }
+    {
+    }
 
     int m_signal;
     int m_signalFd;
@@ -89,8 +86,8 @@ public:
 class TcpConnect final : public Event
 {
 public:
-    TcpConnect(Handler::Id handlerId, const std::string& host, const std::string& port) :
-        Event{ handlerId, EventType::TcpConnect },
+    TcpConnect(Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port) :
+        Event{ handlerId, std::move(onComplete) },
         m_host{ host },
         m_port{ port }
     {
@@ -104,8 +101,11 @@ public:
 class TcpSend final : public Event
 {
 public:
-    TcpSend(Handler::Id handlerId, const std::string& host, const std::string& port, int fd, std::string data) :
-        Event{ handlerId, EventType::TcpSend },
+    TcpSend(
+        Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port, int fd,
+        std::string data
+    ) :
+        Event{ handlerId, std::move(onComplete) },
         m_host{ host },
         m_port{ port },
         m_fd{ fd },
@@ -122,8 +122,10 @@ public:
 class TcpRecv final : public Event
 {
 public:
-    TcpRecv(Handler::Id handlerId, const std::string& host, const std::string& port, int fd) :
-        Event{ handlerId, EventType::TcpRecv },
+    TcpRecv(
+        Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port, int fd
+    ) :
+        Event{ handlerId, std::move(onComplete) },
         m_host{ host },
         m_port{ port },
         m_fd{ fd }

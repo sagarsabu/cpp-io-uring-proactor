@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "proactor/handler.hpp"
+#include "proactor/handle.hpp"
 #include "proactor/proactor.hpp"
 #include "timing/time.hpp"
 
@@ -32,7 +32,7 @@ private:
 private:
     const std::string m_name;
     TimeNS m_period;
-    const Handler::Id m_id{ Handler::NextId() };
+    const Handle::Id m_id{ Handle::NextId() };
 
     friend class Proactor;
 };

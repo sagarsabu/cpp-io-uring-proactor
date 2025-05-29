@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <limits>
 
-#include "proactor/handler.hpp"
+#include "proactor/handle.hpp"
 
-namespace Sage::Handler
+namespace Sage::Handle
 {
 
 Id NextId() noexcept
@@ -13,4 +13,4 @@ Id NextId() noexcept
     return id;
 }
 
-} // namespace Sage::Handler
+} // namespace Sage::Handle

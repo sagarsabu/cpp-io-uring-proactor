@@ -1,6 +1,6 @@
 #pragma once
 
-#include "proactor/handler.hpp"
+#include "proactor/handle.hpp"
 #include "proactor/proactor.hpp"
 #include "proactor/timer_handler.hpp"
 
@@ -49,7 +49,7 @@ private:
     std::string m_tag;
     int m_fd{ -1 };
     ConnectionState m_state{ Unknown };
-    const Handler::Id m_id{ Handler::NextId() };
+    const Handle::Id m_id{ Handle::NextId() };
     std::queue<std::string> m_txBuffer;
     bool m_rxPending{ false };
 

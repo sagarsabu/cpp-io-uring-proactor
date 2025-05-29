@@ -2,11 +2,11 @@
 
 #include <cstddef>
 
-namespace Sage::Handler
+namespace Sage::Handle
 {
 
 using Id = size_t;
 
 Id NextId() noexcept;
 
-} // namespace Sage::Handler
+} // namespace Sage::Handle

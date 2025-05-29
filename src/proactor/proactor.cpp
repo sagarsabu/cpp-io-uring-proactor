@@ -3,6 +3,7 @@
 #include <csignal>
 #include <cstddef>
 #include <cstring>
+#include <liburing/io_uring.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 #include <utility>
@@ -68,10 +69,10 @@ void Proactor::Run()
         auto& event{ itr->second };
         LOG_DEBUG("got event={}", event->NameAndType());
 
-        CompleteEvent(*event, *cEvent);
+        event->m_onCompleteCb(*event, *cEvent);
 
         // dont remove the continuously firing timer
-        if (event->Type() != EventType::TimerExpired)
+        if (event->m_removeOnComplete)
         {
             m_pendingEvents.erase(itr);
         }
@@ -173,7 +174,11 @@ void Proactor::RemoveSocketClient(TcpClient& handler)
 
 void Proactor::RequestTimerContinuous(TimerHandler& handler)
 {
-    auto event{ std::make_unique<TimerExpiredEvent>(handler.m_id) };
+    auto event{ std::make_unique<TimerExpiredEvent>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent)
+        { CompleteTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent); }
+    ) };
     auto eventId{ event->m_id };
 
     if (auto data{ static_cast<IOURing::UserData>(event->m_id) };
@@ -189,14 +194,18 @@ void Proactor::RequestTimerContinuous(TimerHandler& handler)
 
 void Proactor::RequestTimerUpdate(TimerHandler& handler)
 {
-    const auto timerExpireEvent{ FindPendingEvent(handler.m_id, EventType::TimerExpired) };
+    const auto timerExpireEvent{ FindPendingEvent<TimerExpiredEvent>(handler.m_id) };
     if (timerExpireEvent == nullptr)
     {
         LOG_ERROR("[{}] failed to find pending expiry timer for handler {}", handler.Name(), handler.m_id);
         return;
     }
 
-    std::unique_ptr<TimerUpdateEvent> updateEvent{ std::make_unique<TimerUpdateEvent>(handler.m_id) };
+    std::unique_ptr<TimerUpdateEvent> updateEvent{ std::make_unique<TimerUpdateEvent>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent)
+        { CompleteTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent); }
+    ) };
     // the timeout user data must be the same as the inital timeout used data
     IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
     IOURing::UserData userData{ updateEvent->m_id };
@@ -217,14 +226,18 @@ void Proactor::RequestTimerUpdate(TimerHandler& handler)
 
 void Proactor::RequestTimerCancel(TimerHandler& handler)
 {
-    const auto timerExpireEvent{ FindPendingEvent(handler.m_id, EventType::TimerExpired) };
+    const auto timerExpireEvent{ FindPendingEvent<TimerExpiredEvent>(handler.m_id) };
     if (timerExpireEvent == nullptr)
     {
         LOG_ERROR("[{}] failed to find pending expiry timer for handler {}", handler.Name(), handler.m_id);
         return;
     }
 
-    std::unique_ptr<TimerCancelEvent> cancelEvent{ std::make_unique<TimerCancelEvent>(handler.m_id) };
+    std::unique_ptr<TimerCancelEvent> cancelEvent{ std::make_unique<TimerCancelEvent>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent)
+        { CompleteTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent); }
+    ) };
     // the timeout user data must be the same as the inital timeout used data
     IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
     IOURing::UserData userData{ cancelEvent->m_id };
@@ -241,31 +254,35 @@ void Proactor::RequestTimerCancel(TimerHandler& handler)
 void Proactor::AttachExitHandlers()
 {
     constexpr std::array exitSignals{ SIGINT, SIGQUIT, SIGTERM };
-    auto handler = [this](const signalfd_siginfo& info)
-    {
-        const char* sigStr{ strsignal(static_cast<int>(info.ssi_signo)) };
-        switch (info.ssi_signo)
-        {
-            case SIGINT:
-            case SIGQUIT:
-            case SIGTERM:
-            {
-                LOG_INFO("SignalHandler received shutdown signal {}({})", sigStr, info.ssi_signo);
-                m_running = false;
-                break;
-            }
-
-            default:
-            {
-                LOG_CRITICAL("SignalHandler received unexpected signal {}({}). aborting!", sigStr, info.ssi_signo);
-                std::abort();
-            }
-        }
-    };
 
     for (auto sig : exitSignals)
     {
-        AddSignalHandler(sig, handler);
+        AddSignalHandler(
+            sig,
+            [this](const signalfd_siginfo& info)
+            {
+                const char* sigStr{ strsignal(static_cast<int>(info.ssi_signo)) };
+                switch (info.ssi_signo)
+                {
+                    case SIGINT:
+                    case SIGQUIT:
+                    case SIGTERM:
+                    {
+                        LOG_INFO("SignalHandler received shutdown signal {}({})", sigStr, info.ssi_signo);
+                        m_running = false;
+                        break;
+                    }
+
+                    default:
+                    {
+                        LOG_CRITICAL(
+                            "SignalHandler received unexpected signal {}({}). aborting!", sigStr, info.ssi_signo
+                        );
+                        std::abort();
+                    }
+                }
+            }
+        );
     }
 
     if (::signal(SIGPIPE, SIG_IGN) != 0)
@@ -303,8 +320,7 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
         throw std::runtime_error{ "SignalFd Failed" };
     }
 
-    m_signalHandlers[sig] = std::make_unique<SignalHandleData>(fd, sig, func);
-    // m_signalHandlers.emplace(sig, SignalHandleData{ .m_fd = fd, .m_signal = sig, .m_callback = func });
+    m_signalHandlers[sig] = std::make_unique<SignalHandleData>(fd, sig, std::move(func));
 
     if (not RequestSignalRead(sig, fd))
     {
@@ -314,7 +330,12 @@ void Proactor::AddSignalHandler(int sig, SignalHandleFunc&& func)
 
 bool Proactor::RequestSignalRead(int signal, int signalFd)
 {
-    auto event{ std::make_unique<SignalEvent>(signal, signalFd) };
+    auto event{ std::make_unique<SignalEvent>(
+        signal,
+        signalFd,
+        [this](Event& event, const io_uring_cqe& cEvent)
+        { CompleteSignalEvent(static_cast<SignalEvent&>(event), cEvent); }
+    ) };
     IOURing::UserData userData{ event->m_id };
     if (not m_ioURing.QueueSignalRead(userData, event->m_signalFd, event->m_signalReadBuff))
     {
@@ -332,7 +353,13 @@ void Proactor::RequestTcpConnect(TcpClient& handler)
 {
     handler.m_state = TcpClient::Broken;
 
-    auto event{ std::make_unique<TcpConnect>(handler.m_id, handler.m_host, handler.m_port) };
+    auto event{ std::make_unique<TcpConnect>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent)
+        { CompleteTcpConnect(static_cast<TcpConnect&>(event), cEvent); },
+        handler.m_host,
+        handler.m_port
+    ) };
     IOURing::UserData userData{ event->m_id };
     event->m_fd = m_ioURing.QueueTcpConnect(userData, event->m_host, event->m_port);
     if (event->m_fd == -1)
@@ -348,9 +375,14 @@ void Proactor::RequestTcpConnect(TcpClient& handler)
 
 void Proactor::RequestTcpSend(TcpClient& handler, std::string data)
 {
-    auto event{
-        std::make_unique<TcpSend>(handler.m_id, handler.m_host, handler.m_port, handler.m_fd, std::move(data))
-    };
+    auto event{ std::make_unique<TcpSend>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent) { CompleteTcpSend(static_cast<TcpSend&>(event), cEvent); },
+        handler.m_host,
+        handler.m_port,
+        handler.m_fd,
+        std::move(data)
+    ) };
     IOURing::UserData userData{ event->m_id };
 
     if (not m_ioURing.QueueTcpSend(userData, event->m_fd, event->m_data))
@@ -364,7 +396,13 @@ void Proactor::RequestTcpSend(TcpClient& handler, std::string data)
 
 void Proactor::RequestTcpRecv(TcpClient& handler)
 {
-    auto event{ std::make_unique<TcpRecv>(handler.m_id, handler.m_host, handler.m_port, handler.m_fd) };
+    auto event{ std::make_unique<TcpRecv>(
+        handler.m_id,
+        [this](Event& event, const io_uring_cqe& cEvent) { CompleteTcpRecv(static_cast<TcpRecv&>(event), cEvent); },
+        handler.m_host,
+        handler.m_port,
+        handler.m_fd
+    ) };
     IOURing::UserData userData{ event->m_id };
 
     if (not m_ioURing.QueueTcpRecv(userData, event->m_fd, event->m_data))
@@ -374,46 +412,6 @@ void Proactor::RequestTcpRecv(TcpClient& handler)
     }
 
     m_pendingEvents[userData] = std::move(event);
-}
-
-void Proactor::CompleteEvent(Event& event, const io_uring_cqe& cEvent)
-{
-    switch (event.Type())
-    {
-        case EventType::TimerExpired:
-            CompleteTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent);
-            break;
-
-        case EventType::TimerUpdate:
-            CompleteTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent);
-            break;
-
-        case EventType::TimerCancel:
-            CompleteTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent);
-            break;
-
-        case EventType::Signal:
-            CompleteSignalEvent(static_cast<SignalEvent&>(event), cEvent);
-            break;
-
-        case EventType::TcpConnect:
-            CompleteTcpConnect(static_cast<TcpConnect&>(event), cEvent);
-            break;
-
-        case EventType::TcpSend:
-            CompleteTcpSend(static_cast<TcpSend&>(event), cEvent);
-            break;
-
-        case EventType::TcpRecv:
-            CompleteTcpRecv(static_cast<TcpRecv&>(event), cEvent);
-            break;
-
-        default:
-        {
-            LOG_ERROR("received unknown event={}", event.NameAndType());
-            break;
-        }
-    }
 }
 
 void Proactor::CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent)
@@ -633,26 +631,6 @@ void Proactor::CompleteTcpRecv(TcpRecv& event, const io_uring_cqe& cEvent)
     handler->OnReceive(buff);
     // re-queue  for another recv
     handler->QueueRecv();
-}
-
-Event* Proactor::FindPendingEvent(Handler::Id id, EventType eType)
-{
-    for (auto& [_, pending] : m_pendingEvents)
-    {
-        if (pending->Type() != eType)
-        {
-            continue;
-        }
-
-        if (pending->m_handlerId != id)
-        {
-            continue;
-        }
-
-        return pending.get();
-    }
-
-    return nullptr;
 }
 
 } // namespace Sage
