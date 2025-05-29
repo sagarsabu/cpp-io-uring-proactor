@@ -75,19 +75,6 @@ constexpr std::array<std::string_view, Level::Critical + 1> LEVEL_NAMES{
 
 // Functions
 
-LogTimestamp GetCurrentTimeStamp() noexcept
-{
-    LogTimestamp ts;
-    timespec timeSpec{};
-    std::tm localTime{};
-
-    std::timespec_get(&timeSpec, TIME_UTC);
-    std::strftime(ts.m_s, sizeof(ts.m_s), "%d-%m-%Y %H:%M:%S", ::localtime_r(&timeSpec.tv_sec, &localTime));
-    snprintf(ts.m_ns, sizeof(ts.m_ns), ":%09lu", timeSpec.tv_nsec);
-
-    return ts;
-}
-
 std::string_view GetLevelFormatter(Level level) noexcept { return LEVEL_COLOURS[level]; }
 
 std::string_view GetLevelName(Level level) noexcept { return LEVEL_NAMES[level]; }

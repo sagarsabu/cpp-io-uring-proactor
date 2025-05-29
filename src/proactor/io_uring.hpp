@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <functional>
+#include <liburing.h>
 #include <memory>
 #include <sys/signalfd.h>
 #include <sys/types.h>
-#include <liburing.h>
 
 #include "timing/time.hpp"
 
@@ -18,6 +20,7 @@ class IOURing final
 public:
     // usually an id to reference against a map
     using UserData = decltype(io_uring_sqe{}.user_data);
+    using RxBuffer = std::array<uint8_t, 1024>;
 
     explicit IOURing(uint queueSize);
 
@@ -38,7 +41,7 @@ public:
 
     bool QueueTcpSend(const UserData& data, int fd, std::string_view buffer);
 
-    bool QueueTcpRecv(const UserData& data, const std::string& host, const std::string& port);
+    bool QueueTcpRecv(const UserData& data, int fd, RxBuffer& rxBuffer);
 
 private:
     IOURing(const IOURing&) = delete;

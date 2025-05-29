@@ -6,6 +6,7 @@
 #include <sys/signalfd.h>
 
 #include "proactor/handler.hpp"
+#include "proactor/io_uring.hpp"
 #include "utils/demangled_name.hpp"
 
 namespace Sage
@@ -21,6 +22,7 @@ enum class EventType : uint32_t
     Signal,
     TcpConnect,
     TcpSend,
+    TcpRecv,
 };
 
 class Event
@@ -115,6 +117,23 @@ public:
     std::string m_port;
     int m_fd;
     std::string m_data;
+};
+
+class TcpRecv final : public Event
+{
+public:
+    TcpRecv(Handler::Id handlerId, const std::string& host, const std::string& port, int fd) :
+        Event{ handlerId, EventType::TcpRecv },
+        m_host{ host },
+        m_port{ port },
+        m_fd{ fd }
+    {
+    }
+
+    std::string m_host;
+    std::string m_port;
+    int m_fd;
+    IOURing::RxBuffer m_data;
 };
 
 } // namespace Sage

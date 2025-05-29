@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstring>
+#include <liburing.h>
 #include <netdb.h>
 #include <string_view>
 #include <sys/socket.h>
@@ -183,20 +184,18 @@ bool IOURing::QueueTcpSend(const UserData& data, int fd, std::string_view buffer
     return SubmitEvents();
 }
 
-bool IOURing::QueueTcpRecv(const UserData&, const std::string&, const std::string&)
+bool IOURing::QueueTcpRecv(const UserData& data, int fd, RxBuffer& rxBuffer)
 {
-    // TODO
+    io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
+    if (submissionEvent == nullptr)
+    {
+        return false;
+    }
 
-    // io_uring_sqe* submissionEvent{ GetSubmissionEvent() };
-    // if (submissionEvent == nullptr)
-    // {
-    //     return false;
-    // }
+    submissionEvent->user_data = data;
+    io_uring_prep_recv(submissionEvent, fd, rxBuffer.data(), rxBuffer.size(), 0);
 
-    // submissionEvent->user_data = data;
-
-    // return SubmitEvents();
-    return false;
+    return SubmitEvents();
 }
 
 bool IOURing::SubmitEvents()

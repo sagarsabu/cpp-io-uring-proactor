@@ -17,6 +17,17 @@ using TimeUS = std::chrono::microseconds;
 using TimeMS = std::chrono::milliseconds;
 using TimeS = std::chrono::seconds;
 
+struct Timestamp
+{
+    // e.g "01 - 09 - 2023 00:42 : 19"
+    using DateBuffer = char[26];
+    // :%09lu requires 22 bytes max
+    using NanoSecBuffer = char[22];
+
+    DateBuffer m_date;
+    NanoSecBuffer m_ns;
+};
+
 // Helpers
 
 // cppcheck-suppress unusedFunction
@@ -33,5 +44,7 @@ constexpr __kernel_timespec ChronoTimeToKernelTimeSpec(const TimeNS& duration) n
     const TimeNS nanoSecs{ duration };
     return __kernel_timespec{ .tv_sec = seconds.count(), .tv_nsec = (nanoSecs - seconds).count() };
 }
+
+Timestamp GetCurrentTimeStamp() noexcept;
 
 } // namespace Sage

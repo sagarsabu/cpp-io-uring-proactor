@@ -1,3 +1,5 @@
+#include <string_view>
+
 #include "log/logfile_checker.hpp"
 #include "log/logger.hpp"
 #include "main/cli_args.hpp"
@@ -21,7 +23,13 @@ class TestTcpClient final : public TcpClient
 public:
     TestTcpClient() : TcpClient{ "127.0.0.1", "8080" } {}
 
-    void OnConnect() override { LOG_INFO("connected to '{}:{}'", m_host, m_port); }
+    void OnConnect() override { LOG_INFO("[{}] connected", Name()); }
+
+    void OnReceive(std::span<uint8_t> buff) override
+    {
+        std::string_view data{ reinterpret_cast<char*>(buff.data()), buff.size() };
+        LOG_INFO("[{}] rx data: {}", Name(), data);
+    }
 };
 
 } // namespace Sage

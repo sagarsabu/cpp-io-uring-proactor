@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "log/log_stream.hpp"
+#include "timing/time.hpp"
 
 namespace Sage
 {
@@ -27,19 +28,6 @@ std::string_view GetLevelFormatter(Level level) noexcept;
 std::string_view GetLevelName(Level level) noexcept;
 
 std::string_view GetFormatEnd() noexcept;
-
-struct LogTimestamp
-{
-    // e.g "01 - 09 - 2023 00:42 : 19"
-    using SecondsBuffer = char[26];
-    // :%09lu requires 22 bytes max
-    using NanoSecBuffer = char[22];
-
-    SecondsBuffer m_s;
-    NanoSecBuffer m_ns;
-};
-
-LogTimestamp GetCurrentTimeStamp() noexcept;
 
 inline bool ShouldLog(Level level) noexcept { return level >= GetLogStreamer().GetLogLevel(); }
 
@@ -62,25 +50,23 @@ inline void LogToStream(Level level, std::format_string<Args...> fmt, const std:
     if (not Internal::ShouldLog(level))
         return;
 
-    LogTimestamp ts{ GetCurrentTimeStamp() };
+    Timestamp ts{ GetCurrentTimeStamp() };
 
-    {
-        auto& logStreamer{ GetLogStreamer() };
-        LogStreamer::Stream& stream{ logStreamer.m_streamRef.get() };
-        std::println(
-            stream,
-            "{}[{}{}] [{}] [{}:{}] {}{}",
-            GetLevelFormatter(level),
-            ts.m_s,
-            ts.m_ns,
-            GetLevelName(level),
-            GetFilenameStem(loc.file_name()),
-            loc.line(),
-            std::format(fmt, std::forward_like<Args>(args)...),
-            GetFormatEnd()
-        );
-        std::flush(stream);
-    }
+    auto& logStreamer{ GetLogStreamer() };
+    LogStreamer::Stream& stream{ logStreamer.m_streamRef.get() };
+    std::println(
+        stream,
+        "{}[{}{}] [{}] [{}:{}] {}{}",
+        GetLevelFormatter(level),
+        ts.m_date,
+        ts.m_ns,
+        GetLevelName(level),
+        GetFilenameStem(loc.file_name()),
+        loc.line(),
+        std::format(fmt, std::forward_like<Args>(args)...),
+        GetFormatEnd()
+    );
+    std::flush(stream);
 }
 
 template<typename... Args>

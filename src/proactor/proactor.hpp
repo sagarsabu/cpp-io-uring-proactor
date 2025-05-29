@@ -45,6 +45,8 @@ public:
 
     void RequestTcpSend(TcpClient&, std::string);
 
+    void RequestTcpRecv(TcpClient&);
+
 private:
     // creation via factory
     Proactor();
@@ -78,6 +80,8 @@ private:
     void CompleteTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent);
 
     void CompleteTcpSend(TcpSend& event, const io_uring_cqe& cEvent);
+
+    void CompleteTcpRecv(TcpRecv& event, const io_uring_cqe& cEvent);
 
 private:
     Event* FindPendingEvent(Handler::Id id, EventType eType);

@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstddef>
 #include <cstring>
 #include <sys/signalfd.h>
 #include <unistd.h>
@@ -361,6 +362,20 @@ void Proactor::RequestTcpSend(TcpClient& handler, std::string data)
     m_pendingEvents[userData] = std::move(event);
 }
 
+void Proactor::RequestTcpRecv(TcpClient& handler)
+{
+    auto event{ std::make_unique<TcpRecv>(handler.m_id, handler.m_host, handler.m_port, handler.m_fd) };
+    IOURing::UserData userData{ event->m_id };
+
+    if (not m_ioURing.QueueTcpRecv(userData, event->m_fd, event->m_data))
+    {
+        LOG_ERROR("[{}] failed to queue tcp send", handler.Name());
+        return;
+    }
+
+    m_pendingEvents[userData] = std::move(event);
+}
+
 void Proactor::CompleteEvent(Event& event, const io_uring_cqe& cEvent)
 {
     switch (event.Type())
@@ -387,6 +402,10 @@ void Proactor::CompleteEvent(Event& event, const io_uring_cqe& cEvent)
 
         case EventType::TcpSend:
             CompleteTcpSend(static_cast<TcpSend&>(event), cEvent);
+            break;
+
+        case EventType::TcpRecv:
+            CompleteTcpRecv(static_cast<TcpRecv&>(event), cEvent);
             break;
 
         default:
@@ -583,6 +602,37 @@ void Proactor::CompleteTcpSend(TcpSend& event, const io_uring_cqe& cEvent)
     {
         LOG_ERROR("[{}] tcp send res failed. {}", handler->Name(), strerror(-res));
     }
+}
+
+void Proactor::CompleteTcpRecv(TcpRecv& event, const io_uring_cqe& cEvent)
+{
+    int res{ cEvent.res };
+    auto itr{ m_tcpClients.find(event.m_handlerId) };
+    if (itr == m_tcpClients.end())
+    {
+        LOG_ERROR("failed to find socket client for '{}:{}'", event.m_host, event.m_port);
+        return;
+    }
+
+    auto [_, handler] = *itr;
+    handler->m_rxPending = false;
+
+    if (res < 0)
+    {
+        LOG_ERROR("[{}] tcp recv res failed. {}", handler->Name(), strerror(-res));
+        return;
+    }
+
+    if (res == 0)
+    {
+        LOG_INFO("[{}] tcp connection received 0 bytes", handler->Name());
+        return;
+    }
+
+    std::span buff{ event.m_data.begin(), static_cast<size_t>(res) };
+    handler->OnReceive(buff);
+    // re-queue  for another recv
+    handler->QueueRecv();
 }
 
 Event* Proactor::FindPendingEvent(Handler::Id id, EventType eType)

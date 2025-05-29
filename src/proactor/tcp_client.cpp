@@ -1,9 +1,11 @@
 #include "proactor/tcp_client.hpp"
 #include "log/logger.hpp"
 #include "proactor/proactor.hpp"
+#include "timing/time.hpp"
 
 #include <cerrno>
 #include <cstring>
+#include <format>
 #include <string>
 #include <string_view>
 
@@ -48,21 +50,27 @@ void TcpClient::OnTimerExpired()
 
         case Connected:
         {
-            if (not CheckSocketConnected())
+            if (not IsSocketConnected())
             {
                 UpdateInterval(20ms);
-                m_state = Broken;
                 if (::close(m_fd) != 0)
                 {
                     int err{ errno };
                     LOG_ERROR("failed to close fd. {}", strerror(err));
                 }
+                m_state = Broken;
+                m_rxPending = false;
                 m_fd = -1;
             }
             else
             {
-                UpdateInterval(1s);
-                Proactor::Instance()->RequestTcpSend(*this, "client saying hi\n");
+                UpdateInterval(5s);
+
+                Timestamp ts{ GetCurrentTimeStamp() };
+                m_txBuffer.emplace(std::format("client said hi at {}{}\n", ts.m_date, ts.m_ns));
+
+                SendPending();
+                QueueRecv();
             }
 
             break;
@@ -70,7 +78,26 @@ void TcpClient::OnTimerExpired()
     }
 }
 
-bool TcpClient::CheckSocketConnected()
+void TcpClient::SendPending()
+{
+    while (not m_txBuffer.empty())
+    {
+        std::string data{ m_txBuffer.front() };
+        m_txBuffer.pop();
+        Proactor::Instance()->RequestTcpSend(*this, std::move(data));
+    }
+}
+
+void TcpClient::QueueRecv()
+{
+    if (not m_rxPending)
+    {
+        Proactor::Instance()->RequestTcpRecv(*this);
+        m_rxPending = true;
+    }
+}
+
+bool TcpClient::IsSocketConnected()
 {
     char noop;
     ssize_t result = ::recv(m_fd, &noop, sizeof(noop), MSG_PEEK | MSG_DONTWAIT);
