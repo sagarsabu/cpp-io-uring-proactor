@@ -12,6 +12,10 @@ namespace Sage
 
 class TimerHandler;
 class TcpClient;
+class TcpConnect;
+class TcpRecv;
+class TcpSend;
+class SignalEvent;
 
 class Proactor
 {
@@ -19,11 +23,11 @@ public:
     using SignalHandleFunc = std::move_only_function<void(const signalfd_siginfo&)>;
 
 public:
-    static std::shared_ptr<Proactor> Create();
+    static void Create();
 
     static void Destroy();
 
-    static std::shared_ptr<Proactor> Instance() { return s_instance; }
+    static Proactor& Instance() { return *s_instance; }
 
     ~Proactor();
 
@@ -51,6 +55,11 @@ private:
     // creation via factory
     Proactor();
 
+    Proactor(const Proactor&) = delete;
+    Proactor(Proactor&&) = delete;
+    Proactor& operator=(const Proactor&) = delete;
+    Proactor& operator=(Proactor&&) = delete;
+
     void StartAllHandlers();
 
     void AttachExitHandlers();
@@ -67,13 +76,11 @@ private:
 
     void RequestTcpConnect(TcpClient&);
 
-    void CompleteEvent(Event& event, const io_uring_cqe& cEvent);
+    void CompleteTimerExpiredEvent(Event& event, const io_uring_cqe& cEvent);
 
-    void CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent);
+    void CompleteTimerUpdateEvent(Event& event, const io_uring_cqe& cEvent);
 
-    void CompleteTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent);
-
-    void CompleteTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent);
+    void CompleteTimerCancelEvent(Event& event, const io_uring_cqe& cEvent);
 
     void CompleteSignalEvent(SignalEvent& event, const io_uring_cqe& cEvent);
 
@@ -82,8 +89,6 @@ private:
     void CompleteTcpSend(TcpSend& event, const io_uring_cqe& cEvent);
 
     void CompleteTcpRecv(TcpRecv& event, const io_uring_cqe& cEvent);
-
-private:
 
     template<typename ET> auto FindPendingEvent(Handle::Id id)
     {
@@ -108,7 +113,8 @@ private:
         return res;
     }
 
-    static inline std::shared_ptr<Proactor> s_instance{ nullptr };
+private:
+    static inline Proactor* s_instance{ nullptr };
 
     IOURing m_ioURing{ 10'000 };
     bool m_running{ false };

@@ -9,6 +9,27 @@
 namespace Sage
 {
 
+class TimerExpiredEvent final : public Event
+{
+public:
+    TimerExpiredEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) }
+    {
+        m_removeOnComplete = false;
+    }
+};
+
+class TimerUpdateEvent final : public Event
+{
+public:
+    TimerUpdateEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) } {}
+};
+
+class TimerCancelEvent final : public Event
+{
+public:
+    TimerCancelEvent(Handle::Id handlerId, OnCompleteFunc&& onComplete) : Event{ handlerId, std::move(onComplete) } {}
+};
+
 class TimerHandler
 {
 public:

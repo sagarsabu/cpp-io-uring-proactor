@@ -19,13 +19,13 @@ TcpClient::TcpClient(const std::string& host, const std::string& port) :
     m_tag{ host + '@' + port }
 {
     LOG_DEBUG("[{}] c'tor", ClientName());
-    Proactor::Instance()->AddSocketClient(*this);
+    Proactor::Instance().AddSocketClient(*this);
 }
 
 TcpClient::~TcpClient()
 {
     LOG_DEBUG("[{}] d'tor", ClientName());
-    Proactor::Instance()->RemoveSocketClient(*this);
+    Proactor::Instance().RemoveSocketClient(*this);
 }
 
 std::string_view TcpClient::ClientName() const noexcept { return m_tag; }
@@ -37,7 +37,7 @@ void TcpClient::OnTimerExpired()
         case Unknown:
         case Broken:
         {
-            Proactor::Instance()->StartSocketClient(*this);
+            Proactor::Instance().StartSocketClient(*this);
             UpdateInterval(1s);
             break;
         }
@@ -84,7 +84,7 @@ void TcpClient::SendPending()
     {
         std::string data{ m_txBuffer.front() };
         m_txBuffer.pop();
-        Proactor::Instance()->RequestTcpSend(*this, std::move(data));
+        Proactor::Instance().RequestTcpSend(*this, std::move(data));
     }
 }
 
@@ -92,7 +92,7 @@ void TcpClient::QueueRecv()
 {
     if (not m_rxPending)
     {
-        Proactor::Instance()->RequestTcpRecv(*this);
+        Proactor::Instance().RequestTcpRecv(*this);
         m_rxPending = true;
     }
 }

@@ -18,13 +18,37 @@
 namespace Sage
 {
 
-std::shared_ptr<Proactor> Proactor::Create()
+class SignalEvent final : public Event
 {
-    s_instance = std::shared_ptr<Proactor>{ new Proactor };
-    return s_instance;
+public:
+    SignalEvent(int sig, int sigFd, OnCompleteFunc&& onComplete) :
+        Event{ 0, std::move(onComplete) },
+        m_signal{ sig },
+        m_signalFd{ sigFd }
+    {
+    }
+
+    int m_signal;
+    int m_signalFd;
+    signalfd_siginfo m_signalReadBuff{};
+};
+
+void Proactor::Create()
+{
+    if (s_instance == nullptr)
+    {
+        s_instance = new Proactor;
+    }
 }
 
-void Proactor::Destroy() { s_instance = nullptr; }
+void Proactor::Destroy()
+{
+    if (s_instance != nullptr)
+    {
+        delete s_instance;
+        s_instance = nullptr;
+    }
+}
 
 Proactor::Proactor() { LOG_INFO("proactor created"); }
 
@@ -175,9 +199,7 @@ void Proactor::RemoveSocketClient(TcpClient& handler)
 void Proactor::RequestTimerContinuous(TimerHandler& handler)
 {
     auto event{ std::make_unique<TimerExpiredEvent>(
-        handler.m_id,
-        [this](Event& event, const io_uring_cqe& cEvent)
-        { CompleteTimerExpiredEvent(static_cast<TimerExpiredEvent&>(event), cEvent); }
+        handler.m_id, [this](Event& event, const io_uring_cqe& cEvent) { CompleteTimerExpiredEvent(event, cEvent); }
     ) };
     auto eventId{ event->m_id };
 
@@ -202,9 +224,7 @@ void Proactor::RequestTimerUpdate(TimerHandler& handler)
     }
 
     std::unique_ptr<TimerUpdateEvent> updateEvent{ std::make_unique<TimerUpdateEvent>(
-        handler.m_id,
-        [this](Event& event, const io_uring_cqe& cEvent)
-        { CompleteTimerUpdateEvent(static_cast<TimerUpdateEvent&>(event), cEvent); }
+        handler.m_id, [this](Event& event, const io_uring_cqe& cEvent) { CompleteTimerUpdateEvent(event, cEvent); }
     ) };
     // the timeout user data must be the same as the inital timeout used data
     IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
@@ -234,9 +254,7 @@ void Proactor::RequestTimerCancel(TimerHandler& handler)
     }
 
     std::unique_ptr<TimerCancelEvent> cancelEvent{ std::make_unique<TimerCancelEvent>(
-        handler.m_id,
-        [this](Event& event, const io_uring_cqe& cEvent)
-        { CompleteTimerCancelEvent(static_cast<TimerCancelEvent&>(event), cEvent); }
+        handler.m_id, [this](Event& event, const io_uring_cqe& cEvent) { CompleteTimerCancelEvent(event, cEvent); }
     ) };
     // the timeout user data must be the same as the inital timeout used data
     IOURing::UserData currentTimerUserData{ timerExpireEvent->m_id };
@@ -414,7 +432,7 @@ void Proactor::RequestTcpRecv(TcpClient& handler)
     m_pendingEvents[userData] = std::move(event);
 }
 
-void Proactor::CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerExpiredEvent(Event& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
 
@@ -458,7 +476,7 @@ void Proactor::CompleteTimerExpiredEvent(TimerExpiredEvent& event, const io_urin
     }
 }
 
-void Proactor::CompleteTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerUpdateEvent(Event& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
@@ -487,7 +505,7 @@ void Proactor::CompleteTimerUpdateEvent(TimerUpdateEvent& event, const io_uring_
     }
 }
 
-void Proactor::CompleteTimerCancelEvent(TimerCancelEvent& event, const io_uring_cqe& cEvent)
+void Proactor::CompleteTimerCancelEvent(Event& event, const io_uring_cqe& cEvent)
 {
     int eventRes{ cEvent.res };
     auto itr{ m_timerHandlers.find(event.m_handlerId) };
@@ -570,7 +588,7 @@ void Proactor::CompleteTcpConnect(TcpConnect& event, const io_uring_cqe& cEvent)
     handler->m_state = TcpClient::Broken;
     if (res < 0)
     {
-        LOG_ERROR("[{}] tcp connect failed. {}. closing fd", handler->Name(), strerror(-res));
+        LOG_WARNING("[{}] tcp connect failed. {}. closing fd", handler->Name(), strerror(-res));
 
         if (event.m_fd > 0 and ::close(event.m_fd) == -1)
         {

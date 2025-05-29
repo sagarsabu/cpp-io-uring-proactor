@@ -13,6 +13,61 @@
 namespace Sage
 {
 
+class TcpConnect final : public Event
+{
+public:
+    TcpConnect(Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port) :
+        Event{ handlerId, std::move(onComplete) },
+        m_host{ host },
+        m_port{ port }
+    {
+    }
+
+    std::string m_host;
+    std::string m_port;
+    int m_fd{ -1 };
+};
+
+class TcpSend final : public Event
+{
+public:
+    TcpSend(
+        Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port, int fd,
+        std::string data
+    ) :
+        Event{ handlerId, std::move(onComplete) },
+        m_host{ host },
+        m_port{ port },
+        m_fd{ fd },
+        m_data{ std::move(data) }
+    {
+    }
+
+    std::string m_host;
+    std::string m_port;
+    int m_fd;
+    std::string m_data;
+};
+
+class TcpRecv final : public Event
+{
+public:
+    TcpRecv(
+        Handle::Id handlerId, OnCompleteFunc&& onComplete, const std::string& host, const std::string& port, int fd
+    ) :
+        Event{ handlerId, std::move(onComplete) },
+        m_host{ host },
+        m_port{ port },
+        m_fd{ fd }
+    {
+    }
+
+    std::string m_host;
+    std::string m_port;
+    int m_fd;
+    IOURing::RxBuffer m_data{};
+};
+
 class TcpClient : public TimerHandler
 {
 public:

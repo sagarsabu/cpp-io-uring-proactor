@@ -13,7 +13,7 @@ namespace Sage
 class TestTimerHandler final : public TimerHandler
 {
 public:
-    TestTimerHandler() : TimerHandler{ "testHandler", 1s } {}
+    TestTimerHandler() : TimerHandler{ "test-timer", 1s } {}
 
     void OnTimerExpired() override { LOG_INFO("[{}] timer expired", Name()); }
 };
@@ -28,6 +28,11 @@ public:
     void OnReceive(std::span<uint8_t> buff) override
     {
         std::string_view data{ reinterpret_cast<char*>(buff.data()), buff.size() };
+        if (data.ends_with('\n'))
+        {
+            data.remove_suffix(1);
+        }
+
         LOG_INFO("[{}] rx data: {}", Name(), data);
     }
 };
@@ -48,13 +53,13 @@ int main(int argc, char* const argv[])
         LOG_INFO("cpp-io-uring-proactor starting");
 
         {
-            std::shared_ptr<Proactor> proactor{ Proactor::Create() };
+            Proactor::Create();
 
             {
                 LogFileChecker logChecker{ Logger::EnsureLogFileExist };
                 TestTimerHandler handler;
                 TestTcpClient h2;
-                proactor->Run();
+                Proactor::Instance().Run();
             }
 
             Proactor::Destroy();

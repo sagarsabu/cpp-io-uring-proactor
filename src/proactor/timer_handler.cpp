@@ -6,10 +6,10 @@ namespace Sage
 
 TimerHandler::TimerHandler(std::string_view name, const TimeNS& period) : m_name{ name }, m_period{ period }
 {
-    Proactor::Instance()->AddTimerHandler(*this);
+    Proactor::Instance().AddTimerHandler(*this);
 }
 
-TimerHandler::~TimerHandler() { Proactor::Instance()->RemoveTimerHandler(*this); }
+TimerHandler::~TimerHandler() { Proactor::Instance().RemoveTimerHandler(*this); }
 
 void TimerHandler::UpdateInterval(const TimeNS& period)
 {
@@ -19,7 +19,7 @@ void TimerHandler::UpdateInterval(const TimeNS& period)
     }
 
     m_period = period;
-    Proactor::Instance()->UpdateTimerHandler(*this);
+    Proactor::Instance().UpdateTimerHandler(*this);
 }
 
 } // namespace Sage
